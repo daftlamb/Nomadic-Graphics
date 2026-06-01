@@ -4,7 +4,7 @@
   const CX = WIDTH / 2;
   const CY = HEIGHT / 2;
   const TAU = Math.PI * 2;
-  const UI_FONT = 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace';
+  const UI_FONT = '"Mononoki", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace';
   const PALETTE = {
     Ink: "#20231f",
     Moss: "#536b57",
@@ -37,6 +37,11 @@
     return Math.max(min, Math.min(max, value));
   }
 
+  function cssFontFamily(font, fallback = "Georgia, serif") {
+    const family = String(font || "Mononoki").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `"${family}", ${fallback}`;
+  }
+
   function lerp(a, b, t) {
     return a + (b - a) * t;
   }
@@ -48,7 +53,7 @@
 
   function createTextShape(options, seed) {
     const text = (options.text || "NOMADIC").trim() || "NOMADIC";
-    const font = options.font || "Georgia";
+    const font = options.font || "Mononoki";
     const requestedSize = Number(options.size || 154);
     const canvas = document.createElement("canvas");
     canvas.width = WIDTH;
@@ -59,7 +64,7 @@
 
     ctx.clearRect(0, 0, WIDTH, HEIGHT);
     ctx.fillStyle = "#000";
-    ctx.font = `800 ${size}px ${font}, Georgia, serif`;
+    ctx.font = `800 ${size}px ${cssFontFamily(font)}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(text, CX, baseline);
@@ -108,6 +113,7 @@
 
     const bounds = normalizeBounds({ minX, minY, maxX, maxY });
     const guides = createTextGuides(alphaAt, bounds, seed);
+    const contours = createTextContours(text, font, size, baseline, bounds);
 
     if (!boundary.length) {
       boundary.push(point(CX, CY, 0, -1, "boundary"));
@@ -126,22 +132,84 @@
       fill,
       boundary,
       guides,
-      contours: [],
+      contours,
+      fillRule: "evenodd",
       history: [`Text Shape(${font})`],
       stats: {
         boundary: boundary.length,
         fill: fill.length,
         guides: guides.length,
+        contours: contours.length,
         font,
         text
       }
     };
   }
 
+  function createTextContours(text, font, size, baseline, bounds) {
+    const scale = 3;
+    const canvas = document.createElement("canvas");
+    canvas.width = WIDTH * scale;
+    canvas.height = HEIGHT * scale;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.scale(scale, scale);
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+    ctx.fillStyle = "#000";
+    ctx.font = `800 ${size}px ${cssFontFamily(font)}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, CX, baseline);
+
+    const image = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    const alphaAt = (x, y) => {
+      const sx = Math.round(x * scale);
+      const sy = Math.round(y * scale);
+      if (sx < 0 || sy < 0 || sx >= canvas.width || sy >= canvas.height) return 0;
+      return image[(sy * canvas.width + sx) * 4 + 3];
+    };
+    const spacing = 1;
+    const padding = 6;
+    const minX = Math.max(0, Math.floor(bounds.minX - padding));
+    const minY = Math.max(0, Math.floor(bounds.minY - padding));
+    const maxX = Math.min(WIDTH, Math.ceil(bounds.maxX + padding));
+    const maxY = Math.min(HEIGHT, Math.ceil(bounds.maxY + padding));
+    const cols = Math.max(3, Math.ceil((maxX - minX) / spacing) + 1);
+    const rows = Math.max(3, Math.ceil((maxY - minY) / spacing) + 1);
+    const values = [];
+
+    for (let row = 0; row < rows; row += 1) {
+      const y = minY + (row / (rows - 1)) * (maxY - minY);
+      for (let col = 0; col < cols; col += 1) {
+        const x = minX + (col / (cols - 1)) * (maxX - minX);
+        values.push(alphaAt(x, y) / 255);
+      }
+    }
+
+    const field = {
+      ngType: "Field",
+      cols,
+      rows,
+      originX: minX,
+      originY: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      values
+    };
+    const contours = traceFieldAtThreshold(field, 0.5)
+      .map(closePath)
+      .filter((path) => path.length > 5 && pathArea(path) > 8)
+      .map((path) => path.map((pt) => {
+        const normal = normalize(pt.x - CX, pt.y - CY);
+        return point(pt.x, pt.y, normal.x, normal.y, "boundary");
+      }));
+
+    return simplifyContours(contours, 0.35);
+  }
+
   function fitTextSize(ctx, text, font, requestedSize) {
     let size = requestedSize;
     while (size > 42) {
-      ctx.font = `800 ${size}px ${font}, Georgia, serif`;
+      ctx.font = `800 ${size}px ${cssFontFamily(font)}`;
       if (ctx.measureText(text).width <= 980) return size;
       size -= 4;
     }
@@ -1889,7 +1957,7 @@
     const circleResult = circleBooleanShape(a, b, mode, step);
     if (circleResult) return circleResult;
     const paperResult = paperBooleanShape(a, b, mode, step);
-    if (paperResult) return paperResult;
+    if (paperResult) return withBooleanRasterMask(paperResult, a, b, mode);
 
     const bounds = booleanSampleBounds(a, b, mode, step);
     const testA = shapeTester(a, step);
@@ -1939,6 +2007,7 @@
       boundary,
       contours,
       sampledBoolean: true,
+      shapeStyle: booleanShapeStyle(),
       history: (a.history || [a.label]).concat([`${mode} ${b.label}`]),
       stats: {
         operation: mode,
@@ -1947,6 +2016,68 @@
         step
       }
     };
+  }
+
+  function withBooleanRasterMask(shape, a, b, mode) {
+    if (a.kind !== "text" && b.kind !== "text") return shape;
+    const rasterMask = booleanRasterMask(a, b, mode);
+    return rasterMask ? { ...shape, rasterMask } : shape;
+  }
+
+  function booleanRasterMask(a, b, mode) {
+    const canvas = document.createElement("canvas");
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+    ctx.fillStyle = "#20231f";
+
+    if (mode === "Union") {
+      fillShapeMask(ctx, a);
+      fillShapeMask(ctx, b);
+    } else if (mode === "Intersect") {
+      fillShapeMask(ctx, a);
+      ctx.globalCompositeOperation = "source-in";
+      fillShapeMask(ctx, b);
+    } else if (mode === "Difference") {
+      fillShapeMask(ctx, a);
+      ctx.globalCompositeOperation = "xor";
+      fillShapeMask(ctx, b);
+    } else {
+      fillShapeMask(ctx, a);
+      ctx.globalCompositeOperation = "destination-out";
+      fillShapeMask(ctx, b);
+    }
+
+    ctx.globalCompositeOperation = "source-over";
+    return canvas;
+  }
+
+  function fillShapeMask(ctx, shape) {
+    if (!shape) return;
+    ctx.save();
+    ctx.fillStyle = "#20231f";
+    if (shape.kind === "text") {
+      ctx.font = `800 ${shape.layout.size}px ${cssFontFamily(shape.layout.font)}`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(shape.text, shape.layout.x, shape.layout.y);
+    } else if (shape.kind === "circle") {
+      ctx.beginPath();
+      ctx.arc(CX, CY, shape.radius, 0, TAU);
+      ctx.fill();
+    } else if (shape.contours?.length) {
+      ctx.beginPath();
+      shape.contours.forEach((contour) => {
+        closePath(contour).forEach((pt, index) => {
+          if (index === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.closePath();
+      });
+      ctx.fill(shape.fillRule === "evenodd" ? "evenodd" : "nonzero");
+    }
+    ctx.restore();
   }
 
   function circleBooleanShape(a, b, mode, step) {
@@ -1987,6 +2118,7 @@
       contours,
       fillRule: inner > 0 && outer > inner ? "evenodd" : "nonzero",
       sampledBoolean: false,
+      shapeStyle: booleanShapeStyle(),
       history: (a.history || [a.label]).concat([`${mode} ${b.label}`]),
       stats: {
         operation: mode,
@@ -2016,7 +2148,7 @@
       else if (mode === "Difference") result = itemA.exclude(itemB);
       else result = itemA.subtract(itemB);
 
-      const contours = paperItemContours(result, step).filter((path) => path.length > 2);
+      const contours = cleanBooleanContours(paperItemContours(result, step));
       if (!contours.length) return null;
       const bounds = boundsFromPaths(contours);
       const fill = sampleFillFromContours(contours, bounds, 8);
@@ -2031,6 +2163,7 @@
         contours,
         fillRule: "evenodd",
         sampledBoolean: false,
+        shapeStyle: booleanShapeStyle(),
         history: (a.history || [a.label]).concat([`${mode} ${b.label}`]),
         stats: {
           operation: mode,
@@ -2055,6 +2188,7 @@
     if (contours.length === 1) return makePaperPath(contours[0], true);
 
     const compound = new paperScope.CompoundPath({ insert: false });
+    compound.fillRule = shape.fillRule || "evenodd";
     contours.forEach((contour) => {
       const path = makePaperPath(contour, true);
       if (path) compound.addChild(path);
@@ -2067,7 +2201,7 @@
     const collect = (node) => {
       if (!node) return;
       if (node.segments?.length) {
-        if (typeof node.flatten === "function") node.flatten(Math.max(1.5, step / 2));
+        if (typeof node.flatten === "function") node.flatten(Math.max(0.65, step / 8));
         contours.push(closePath(node.segments.map((segment) => {
           const normal = normalize(segment.point.x - CX, segment.point.y - CY);
           return point(segment.point.x, segment.point.y, normal.x, normal.y, "boundary");
@@ -2077,6 +2211,21 @@
     };
     collect(item);
     return contours;
+  }
+
+  function cleanBooleanContours(contours) {
+    return simplifyContours(contours, 0.45)
+      .filter((path) => path.length > 4 && pathArea(path) > 18)
+      .map(closePath);
+  }
+
+  function booleanShapeStyle() {
+    return {
+      fillColor: "#20231f",
+      fillOpacity: 0.42,
+      strokeOpacity: 0,
+      strokeWidth: 0
+    };
   }
 
   function mirrorData(data, options = {}) {
@@ -3079,10 +3228,16 @@
     if (!shape || shape.showBody === false) return;
     ctx.save();
     ctx.lineWidth = shapeStrokeWidth(shape);
+    if (shape.rasterMask) {
+      ctx.globalAlpha = shapeFillOpacity(shape, alpha);
+      ctx.drawImage(shape.rasterMask, 0, 0, WIDTH, HEIGHT);
+      ctx.restore();
+      return;
+    }
     if (shape.kind === "text") {
       ctx.globalAlpha = shape.shapeStyle?.fillColor ? shapeFillOpacity(shape, alpha) : alpha;
       ctx.fillStyle = shape.shapeStyle?.fillColor || shapeStrokeColor(shape, 0);
-      ctx.font = `800 ${shape.layout.size}px ${shape.layout.font}, Georgia, serif`;
+      ctx.font = `800 ${shape.layout.size}px ${cssFontFamily(shape.layout.font)}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(shape.text, shape.layout.x, shape.layout.y);
@@ -3296,7 +3451,7 @@
         svgFills(data.fills || []),
         ...(data.paths || []).map((path, i) => svgPath(path, "scanline", i, data.stroke)),
         ...(data.marks || []).map((m, i) => `<circle cx="${round(m.x)}" cy="${round(m.y)}" r="${round(m.r)}" fill="${m.color || (i % 9 === 0 ? "#9b6048" : i % 5 === 0 ? "#456c7c" : "#20231f")}" opacity="${round(m.a)}"/>`),
-        ...(data.labels || []).map((label) => `<text x="${round(label.x)}" y="${round(label.y)}" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace" font-size="${round(label.size || 9)}" font-weight="700" fill="${label.color || "#20231f"}" opacity="${round(label.a ?? 0.8)}">${escapeText(label.text || "")}</text>`)
+        ...(data.labels || []).map((label) => `<text x="${round(label.x)}" y="${round(label.y)}" text-anchor="middle" dominant-baseline="middle" font-family="Mononoki, ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace" font-size="${round(label.size || 9)}" font-weight="700" fill="${label.color || "#20231f"}" opacity="${round(label.a ?? 0.8)}">${escapeText(label.text || "")}</text>`)
       ].join("");
     }
     return "";
@@ -3316,7 +3471,7 @@
     const fillOpacity = round(shapeFillOpacity(shape, opacity));
     const strokeWidth = round(shapeStrokeWidth(shape));
     if (shape.kind === "text") {
-      return `<text x="${shape.layout.x}" y="${shape.layout.y}" text-anchor="middle" dominant-baseline="middle" font-family="${escapeAttr(shape.layout.font)}, Georgia, serif" font-size="${round(shape.layout.size)}" font-weight="800" fill="${fillColor || shapeStrokeColor(shape, 0)}" opacity="${fillColor ? fillOpacity : round(opacity)}">${escapeText(shape.text)}</text>`;
+      return `<text x="${shape.layout.x}" y="${shape.layout.y}" text-anchor="middle" dominant-baseline="middle" font-family="${escapeAttr(cssFontFamily(shape.layout.font))}" font-size="${round(shape.layout.size)}" font-weight="800" fill="${fillColor || shapeStrokeColor(shape, 0)}" opacity="${fillColor ? fillOpacity : round(opacity)}">${escapeText(shape.text)}</text>`;
     }
     if (shape.kind === "circle") {
       return `<circle cx="${CX}" cy="${CY}" r="${round(shape.radius)}" fill="${fillColor || "none"}" fill-opacity="${fillColor ? fillOpacity : 0}" stroke="${shapeStrokeColor(shape, 0)}" stroke-width="${strokeWidth}" stroke-opacity="${strokeOpacity}"/>`;
@@ -3606,6 +3761,25 @@
     };
   }
 
+  function simplifyContours(contours, tolerance) {
+    if (!paperScope) return contours;
+    return contours.map((contour) => {
+      const path = makePaperPath(contour, true);
+      if (!path) return contour;
+      try {
+        path.simplify(tolerance);
+        return closePath(path.segments.map((segment) => {
+          const normal = normalize(segment.point.x - CX, segment.point.y - CY);
+          return point(segment.point.x, segment.point.y, normal.x, normal.y, "boundary");
+        }));
+      } catch {
+        return contour;
+      } finally {
+        path.remove();
+      }
+    }).filter((path) => path.length > 2);
+  }
+
   function sampleClosedPolyline(vertices, spacing) {
     const points = [];
     vertices.forEach((start, index) => {
@@ -3637,6 +3811,17 @@
       if (intersects) inside = !inside;
     }
     return inside;
+  }
+
+  function pathArea(path) {
+    const closed = closePath(path);
+    let area = 0;
+    for (let index = 0; index < closed.length - 1; index += 1) {
+      const a = closed[index];
+      const b = closed[index + 1];
+      area += a.x * b.y - b.x * a.y;
+    }
+    return Math.abs(area) / 2;
   }
 
   function boundsFromPoints(points) {
@@ -4915,7 +5100,7 @@
   }
 
   function shapeStrokeWidth(shape) {
-    return shape?.shapeStyle?.strokeWidth || 2.2;
+    return shape?.shapeStyle?.strokeWidth ?? 2.2;
   }
 
   function defaultPathColor(style, index) {

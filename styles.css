@@ -19,8 +19,8 @@
   --moss: #536b57;
   --water: #456c7c;
   --clay: #9b6048;
-  --font-ui: "Inter Variable", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font-ui: "Mononoki", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font-mono: "Mononoki", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
 :root[data-theme="survey"] {
@@ -237,6 +237,46 @@ h2 {
   border-radius: 4px;
   color: var(--ink);
   background: var(--field);
+}
+
+.panel-toggle-button {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  padding: 0;
+}
+
+.panel-toggle-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.panel-toggle-button .icon-sidebar-right {
+  display: none;
+}
+
+#toggleInspectorPanel .icon-sidebar-left {
+  display: none;
+}
+
+#toggleInspectorPanel .icon-sidebar-right {
+  display: block;
+}
+
+.app-shell.library-collapsed #toggleLibraryPanel .icon-sidebar-left,
+.app-shell.inspector-collapsed #toggleInspectorPanel .icon-sidebar-right {
+  display: none;
+}
+
+.app-shell.library-collapsed #toggleLibraryPanel .icon-sidebar-right,
+.app-shell.inspector-collapsed #toggleInspectorPanel .icon-sidebar-left {
+  display: block;
 }
 
 .export-actions {

@@ -3,7 +3,29 @@ LiteGraph.NODE_TITLE_HEIGHT = 30;
 LiteGraph.NODE_WIDGET_HEIGHT = 24;
 LiteGraph.NODE_SLOT_HEIGHT = 18;
 
-const UI_FONT = 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace';
+const UI_FONT = '"Mononoki", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace';
+const TEXT_FONT_OPTIONS = [
+  "Mononoki",
+  "Roboto Mono",
+  "Space Mono",
+  "IBM Plex Mono",
+  "JetBrains Mono",
+  "Bebas Neue",
+  "Anton",
+  "Archivo Black",
+  "Bungee",
+  "Rubik Mono One",
+  "Oswald",
+  "Staatliches",
+  "Press Start 2P",
+  "Georgia",
+  "Arial",
+  "Times New Roman",
+  "Verdana",
+  "Trebuchet MS",
+  "Courier New",
+  "Impact"
+];
 
 const DATA_TYPES = {
   image: "Image",
@@ -31,7 +53,7 @@ const nodeGroups = [
         description: "Creates a sampled glyph shape.",
         widgets: [
           ["text", "Text", "NOMADIC"],
-          ["combo", "Font", "Georgia", ["Georgia", "Arial", "Times New Roman", "Verdana", "Trebuchet MS", "Courier New", "Impact"]],
+          ["combo", "Font", "Mononoki", TEXT_FONT_OPTIONS],
           ["slider", "Size", 260, 72, 520],
           ["combo", "Body", "Show", ["Show", "Hide"]]
         ]
@@ -744,6 +766,8 @@ const PATCH_STORAGE_KEY = "nomadic-graphics.patch.v1";
 const THEME_STORAGE_KEY = "nomadic-graphics.theme";
 const PANEL_STATE_STORAGE_KEY = "nomadic-graphics.panels";
 const UNDO_LIMIT = 80;
+const LINK_INSERT_HIT_TARGET_PX = 24;
+const LINK_HIT_SAMPLE_COUNT = 32;
 
 const state = {
   seed: 7,
@@ -752,6 +776,7 @@ const state = {
   hoveredLinkId: null,
   highlightedInsertLinkId: null,
   lastCanvasPoint: null,
+  lastContextPoint: null,
   lastPreview: null,
   lastPreviewOptions: {},
   addCounts: {},
@@ -887,6 +912,7 @@ function addWidgets(node, def) {
     if (kind === "combo") {
       node.addWidget("combo", name, value, (nextValue) => {
         node.properties[key] = nextValue;
+        handleNodeWidgetChange(node, def, name);
         runGraphOnce();
         scheduleUndoSnapshot();
       }, { values: minOrValues });
@@ -1476,7 +1502,20 @@ function handleNodeButton(node, def, name) {
 }
 
 function handleNodeWidgetChange(node, def, name) {
+  if (def.type === "nomadic/source/text_shape" && name === "Font") {
+    loadTextFont(node.properties.font).then(() => {
+      runGraphOnce();
+      graphCanvas?.setDirty(true, true);
+    });
+    return;
+  }
   if ((def.type !== "nomadic/source/image_input" && def.type !== "nomadic/source/image_field_input") || name !== "Scale") return;
+}
+
+function loadTextFont(font) {
+  if (!document.fonts?.load) return Promise.resolve();
+  const family = `"${String(font || "Mononoki").replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  return document.fonts.load(`800 260px ${family}`).catch(() => undefined);
 }
 
 function readLocalFile(accept, mode) {
@@ -1668,7 +1707,7 @@ function nomadicCanvasMenuOptions() {
     submenu: {
       options: group.nodes.map((node) => ({
         content: node.title,
-        callback: () => addGraphNode(node.type)
+        callback: () => addGraphNode(node.type, { position: state.lastContextPoint })
       }))
     }
   }));
@@ -1683,8 +1722,8 @@ function addGraphNode(type, options = {}) {
   node.pos = insertPlan
     ? positionForInsertedNode(insertPlan.link, node, options.position)
     : options.position
-      ? [options.position[0] - node.size[0] * 0.5, options.position[1] - node.size[1] * 0.5]
-      : positionForNewNode(def.group, count);
+      ? positionForPointInCurrentView(options.position, node)
+      : positionForNewNodeInCurrentView(node, count);
   graph.add(node);
   if (insertPlan) insertNodeIntoLink(node, insertPlan);
   graphCanvas.selectNode(node);
@@ -1712,6 +1751,8 @@ function bindGraphCanvasInsertEvents() {
 
   graphCanvasElement.addEventListener("contextmenu", (event) => {
     const point = graphPointFromEvent(event);
+    state.lastCanvasPoint = point;
+    state.lastContextPoint = point;
     const linkId = findNearestLinkId(point);
     if (linkId) setSelectedInsertLink(linkId);
   });
@@ -1799,14 +1840,18 @@ function positionForInsertedNode(link, node, preferredPoint = null) {
   return [point[0] - node.size[0] * 0.5, point[1] - node.size[1] * 0.5];
 }
 
+function positionForPointInCurrentView(point, node) {
+  return clampNodePositionToCurrentView([point[0] - node.size[0] * 0.5, point[1] - node.size[1] * 0.5], node);
+}
+
 function findNearestLinkId(point) {
   if (!point || !graph?.links) return null;
-  const maxDistance = 14 / Math.max(0.2, graphCanvas.ds.scale);
+  const maxDistance = LINK_INSERT_HIT_TARGET_PX / Math.max(0.2, graphCanvas.ds.scale);
   let bestId = null;
   let bestDistance = maxDistance;
   Object.values(graph.links).forEach((link) => {
     const distance = distanceToLink(point, link);
-    if (distance < bestDistance) {
+    if (distance <= bestDistance) {
       bestDistance = distance;
       bestId = link.id;
     }
@@ -1819,8 +1864,8 @@ function distanceToLink(point, link) {
   if (!ends) return Infinity;
   let best = Infinity;
   let previous = ends.start;
-  for (let index = 1; index <= 18; index += 1) {
-    const next = linkBezierPoint(ends.start, ends.end, index / 18);
+  for (let index = 1; index <= LINK_HIT_SAMPLE_COUNT; index += 1) {
+    const next = linkBezierPoint(ends.start, ends.end, index / LINK_HIT_SAMPLE_COUNT);
     best = Math.min(best, pointToSegmentDistance(point, previous, next));
     previous = next;
   }
@@ -1889,6 +1934,42 @@ function positionForNewNode(group, count) {
   };
   const rowStep = group === "Output" ? 560 : 190;
   return [columns[group] || 120, (rows[group] || 120) + count * rowStep];
+}
+
+function positionForNewNodeInCurrentView(node, count) {
+  if (!graphCanvas) return positionForNewNode(nodeDefs.get(node.properties?.type)?.group || "Source", count);
+  const center = graphCanvas.convertCanvasToOffset([graphCanvasElement.width * 0.5, graphCanvasElement.height * 0.5]);
+  const offsets = [
+    [0, 0],
+    [36, 36],
+    [-36, 36],
+    [36, -36],
+    [-36, -36],
+    [72, 0],
+    [-72, 0],
+    [0, 72],
+    [0, -72]
+  ];
+  const offset = offsets[count % offsets.length];
+  const wanted = [
+    center[0] - node.size[0] * 0.5 + offset[0],
+    center[1] - node.size[1] * 0.5 + offset[1]
+  ];
+  return clampNodePositionToCurrentView(wanted, node);
+}
+
+function clampNodePositionToCurrentView(position, node) {
+  const padding = 24 / Math.max(0.2, graphCanvas.ds.scale);
+  const topLeft = graphCanvas.convertCanvasToOffset([0, 0]);
+  const bottomRight = graphCanvas.convertCanvasToOffset([graphCanvasElement.width, graphCanvasElement.height]);
+  const minX = Math.min(topLeft[0], bottomRight[0]) + padding;
+  const maxX = Math.max(topLeft[0], bottomRight[0]) - node.size[0] - padding;
+  const minY = Math.min(topLeft[1], bottomRight[1]) + padding;
+  const maxY = Math.max(topLeft[1], bottomRight[1]) - node.size[1] - padding;
+  return [
+    maxX >= minX ? clampNumber(position[0], minX, maxX) : position[0],
+    maxY >= minY ? clampNumber(position[1], minY, maxY) : position[1]
+  ];
 }
 
 function selectGraphNode(node) {
@@ -2251,12 +2332,10 @@ function applyPanelState() {
   appShell.classList.toggle("library-collapsed", state.libraryCollapsed);
   appShell.classList.toggle("inspector-collapsed", state.inspectorCollapsed);
 
-  toggleLibraryPanel.textContent = state.libraryCollapsed ? ">" : "<";
   toggleLibraryPanel.title = state.libraryCollapsed ? "Expand node library" : "Collapse node library";
   toggleLibraryPanel.setAttribute("aria-label", toggleLibraryPanel.title);
   toggleLibraryPanel.setAttribute("aria-expanded", String(!state.libraryCollapsed));
 
-  toggleInspectorPanel.textContent = state.inspectorCollapsed ? "<" : ">";
   toggleInspectorPanel.title = state.inspectorCollapsed ? "Expand node inspector" : "Collapse node inspector";
   toggleInspectorPanel.setAttribute("aria-label", toggleInspectorPanel.title);
   toggleInspectorPanel.setAttribute("aria-expanded", String(!state.inspectorCollapsed));

@@ -5,7 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nomadic Graphics Prototype</title>
     <link rel="stylesheet" href="vendor/litegraph/litegraph.css" />
-    <link rel="stylesheet" href="styles.css?v=15" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=Bebas+Neue&family=Bungee&family=IBM+Plex+Mono:wght@400;700&family=JetBrains+Mono:wght@400;700;800&family=Oswald:wght@400;700&family=Press+Start+2P&family=Roboto+Mono:wght@400;700&family=Rubik+Mono+One&family=Space+Mono:wght@400;700&family=Staatliches&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css?v=19" />
   </head>
   <body>
     <main class="app-shell">
@@ -16,7 +19,18 @@
             <h1>Node Library</h1>
           </div>
           <div class="panel-actions">
-            <button class="icon-button" id="toggleLibraryPanel" title="Collapse node library" aria-label="Collapse node library" aria-expanded="true">&lt;</button>
+            <button class="icon-button panel-toggle-button" id="toggleLibraryPanel" title="Collapse node library" aria-label="Collapse node library" aria-expanded="true">
+              <svg class="panel-toggle-icon icon-sidebar-left" viewBox="0 0 20 20" aria-hidden="true">
+                <rect x="3.5" y="3.5" width="13" height="13" rx="2" />
+                <path d="M8 4v12" />
+                <path d="M13 7.5 10.5 10l2.5 2.5" />
+              </svg>
+              <svg class="panel-toggle-icon icon-sidebar-right" viewBox="0 0 20 20" aria-hidden="true">
+                <rect x="3.5" y="3.5" width="13" height="13" rx="2" />
+                <path d="M12 4v12" />
+                <path d="m7 7.5 2.5 2.5L7 12.5" />
+              </svg>
+            </button>
             <button class="icon-button" id="randomizeButton" title="Reseed graph" aria-label="Reseed graph">R</button>
           </div>
         </header>
@@ -59,7 +73,18 @@
             <p class="eyebrow">Node Inspector</p>
             <h2 id="selectedNodeName">No Node Selected</h2>
           </div>
-          <button class="icon-button" id="toggleInspectorPanel" title="Collapse node inspector" aria-label="Collapse node inspector" aria-expanded="true">&gt;</button>
+          <button class="icon-button panel-toggle-button" id="toggleInspectorPanel" title="Collapse node inspector" aria-label="Collapse node inspector" aria-expanded="true">
+            <svg class="panel-toggle-icon icon-sidebar-left" viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="3.5" y="3.5" width="13" height="13" rx="2" />
+              <path d="M8 4v12" />
+              <path d="M13 7.5 10.5 10l2.5 2.5" />
+            </svg>
+            <svg class="panel-toggle-icon icon-sidebar-right" viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="3.5" y="3.5" width="13" height="13" rx="2" />
+              <path d="M12 4v12" />
+              <path d="m7 7.5 2.5 2.5L7 12.5" />
+            </svg>
+          </button>
         </header>
 
         <section class="process-note">
@@ -79,7 +104,7 @@
 
     <script src="vendor/litegraph/litegraph.js"></script>
     <script src="vendor/paper/paper-full.min.js"></script>
-    <script src="geometry-engine.js?v=32"></script>
-    <script src="app.js?v=51"></script>
+    <script src="geometry-engine.js?v=37"></script>
+    <script src="app.js?v=55"></script>
   </body>
 </html>

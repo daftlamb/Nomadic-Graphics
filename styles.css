@@ -101,6 +101,19 @@ button:disabled {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr) 336px;
   height: 100vh;
+  transition: grid-template-columns 160ms ease;
+}
+
+.app-shell.library-collapsed {
+  grid-template-columns: 48px minmax(0, 1fr) 336px;
+}
+
+.app-shell.inspector-collapsed {
+  grid-template-columns: 240px minmax(0, 1fr) 48px;
+}
+
+.app-shell.library-collapsed.inspector-collapsed {
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
 }
 
 .library-panel,
@@ -119,6 +132,12 @@ button:disabled {
   overflow: auto;
   border-width: 0 1px 0 0;
   background: var(--panel);
+}
+
+.app-shell.library-collapsed .library-panel {
+  gap: 8px;
+  padding: 8px 6px;
+  overflow: hidden;
 }
 
 .workspace-panel {
@@ -142,6 +161,12 @@ button:disabled {
   font-family: var(--font-mono);
 }
 
+.app-shell.inspector-collapsed .params-panel {
+  gap: 8px;
+  padding: 8px 6px;
+  overflow: hidden;
+}
+
 .brand,
 .top-bar {
   display: flex;
@@ -152,6 +177,24 @@ button:disabled {
 
 .brand > div {
   font-family: var(--font-mono);
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.params-panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.params-panel > header > div {
+  min-width: 0;
 }
 
 .top-bar {
@@ -281,11 +324,29 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 7px 9px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.category-toggle span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-toggle span:last-child {
+  flex: 0 0 auto;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.category.collapsed .node-list {
+  display: none;
 }
 
 .node-list {
@@ -402,4 +463,18 @@ input[type="text"] {
 
 .litegraph {
   background: var(--graph-bg);
+}
+
+.app-shell.library-collapsed .brand {
+  justify-content: center;
+}
+
+.app-shell.library-collapsed .brand > div:first-child,
+.app-shell.library-collapsed #randomizeButton,
+.app-shell.library-collapsed .node-library,
+.app-shell.inspector-collapsed .params-panel > header > div,
+.app-shell.inspector-collapsed .process-note,
+.app-shell.inspector-collapsed .inspector-preview-wrap,
+.app-shell.inspector-collapsed .specimen {
+  display: none;
 }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nomadic Graphics Prototype</title>
     <link rel="stylesheet" href="vendor/litegraph/litegraph.css" />
-    <link rel="stylesheet" href="styles.css?v=14" />
+    <link rel="stylesheet" href="styles.css?v=15" />
   </head>
   <body>
     <main class="app-shell">
@@ -15,7 +15,10 @@
             <p class="eyebrow">Nomadic Graphics</p>
             <h1>Node Library</h1>
           </div>
-          <button class="icon-button" id="randomizeButton" title="Reseed graph" aria-label="Reseed graph">R</button>
+          <div class="panel-actions">
+            <button class="icon-button" id="toggleLibraryPanel" title="Collapse node library" aria-label="Collapse node library" aria-expanded="true">&lt;</button>
+            <button class="icon-button" id="randomizeButton" title="Reseed graph" aria-label="Reseed graph">R</button>
+          </div>
         </header>
 
         <nav class="node-library" id="nodeLibrary" aria-label="Process library"></nav>
@@ -52,8 +55,11 @@
 
       <aside class="params-panel" aria-label="Node parameters">
         <header>
-          <p class="eyebrow">Node Inspector</p>
-          <h2 id="selectedNodeName">No Node Selected</h2>
+          <div>
+            <p class="eyebrow">Node Inspector</p>
+            <h2 id="selectedNodeName">No Node Selected</h2>
+          </div>
+          <button class="icon-button" id="toggleInspectorPanel" title="Collapse node inspector" aria-label="Collapse node inspector" aria-expanded="true">&gt;</button>
         </header>
 
         <section class="process-note">
@@ -74,6 +80,6 @@
     <script src="vendor/litegraph/litegraph.js"></script>
     <script src="vendor/paper/paper-full.min.js"></script>
     <script src="geometry-engine.js?v=32"></script>
-    <script src="app.js?v=50"></script>
+    <script src="app.js?v=51"></script>
   </body>
 </html>

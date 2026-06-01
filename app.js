@@ -742,6 +742,7 @@ const nodeGroups = [
 const nodeDefs = new Map(nodeGroups.flatMap((group) => group.nodes.map((node) => [node.type, { ...node, group: group.name }])));
 const PATCH_STORAGE_KEY = "nomadic-graphics.patch.v1";
 const THEME_STORAGE_KEY = "nomadic-graphics.theme";
+const PANEL_STATE_STORAGE_KEY = "nomadic-graphics.panels";
 const UNDO_LIMIT = 80;
 
 const state = {
@@ -755,6 +756,9 @@ const state = {
   lastPreviewOptions: {},
   addCounts: {},
   libraryMode: "Process",
+  libraryCollapsed: false,
+  inspectorCollapsed: false,
+  collapsedLibraryGroups: new Set(),
   theme: "paper",
   undoStack: [],
   undoIndex: -1,
@@ -764,6 +768,7 @@ const state = {
 };
 
 const graphCanvasElement = document.querySelector("#graphCanvas");
+const appShell = document.querySelector(".app-shell");
 const inspectorPreview = document.querySelector("#inspectorPreview");
 const nodeLibrary = document.querySelector("#nodeLibrary");
 const workflowTitle = document.querySelector("#workflowTitle");
@@ -777,6 +782,8 @@ const loadPatchButton = document.querySelector("#loadPatchButton");
 const exportPatchButton = document.querySelector("#exportPatchButton");
 const openPatchButton = document.querySelector("#openPatchButton");
 const themeSelect = document.querySelector("#themeSelect");
+const toggleLibraryPanel = document.querySelector("#toggleLibraryPanel");
+const toggleInspectorPanel = document.querySelector("#toggleInspectorPanel");
 
 let graph;
 let graphCanvas;
@@ -1561,6 +1568,7 @@ function renderLibrary() {
     button.className = state.libraryMode === name ? "active" : "";
     button.addEventListener("click", () => {
       state.libraryMode = name;
+      savePanelState();
       renderLibrary();
     });
     mode.appendChild(button);
@@ -1568,12 +1576,24 @@ function renderLibrary() {
   nodeLibrary.appendChild(mode);
 
   for (const groupDef of libraryGroups()) {
+    const groupKey = libraryGroupKey(groupDef.name);
+    const isCollapsed = state.collapsedLibraryGroups.has(groupKey);
     const group = document.createElement("section");
-    group.className = "category";
+    group.className = isCollapsed ? "category collapsed" : "category";
     const title = document.createElement("button");
     title.className = "category-toggle";
     title.type = "button";
-    title.innerHTML = `<span>${groupDef.name}</span><span>+</span>`;
+    title.setAttribute("aria-expanded", String(!isCollapsed));
+    title.innerHTML = `<span>${groupDef.name}</span><span>${isCollapsed ? "+" : "-"}</span>`;
+    title.addEventListener("click", () => {
+      if (state.collapsedLibraryGroups.has(groupKey)) {
+        state.collapsedLibraryGroups.delete(groupKey);
+      } else {
+        state.collapsedLibraryGroups.add(groupKey);
+      }
+      savePanelState();
+      renderLibrary();
+    });
     const list = document.createElement("div");
     list.className = "node-list";
     groupDef.nodes.forEach((node) => {
@@ -1592,6 +1612,10 @@ function renderLibrary() {
     group.append(title, list);
     nodeLibrary.appendChild(group);
   }
+}
+
+function libraryGroupKey(name) {
+  return `${state.libraryMode}:${name}`;
 }
 
 function libraryGroups() {
@@ -2200,6 +2224,54 @@ function writeStoredValue(key, value) {
   }
 }
 
+function loadPanelState() {
+  const raw = readStoredValue(PANEL_STATE_STORAGE_KEY);
+  if (!raw) return;
+  try {
+    const saved = JSON.parse(raw);
+    state.libraryCollapsed = Boolean(saved.libraryCollapsed);
+    state.inspectorCollapsed = Boolean(saved.inspectorCollapsed);
+    state.collapsedLibraryGroups = new Set(Array.isArray(saved.collapsedLibraryGroups) ? saved.collapsedLibraryGroups : []);
+  } catch {
+    state.collapsedLibraryGroups = new Set();
+  }
+}
+
+function savePanelState() {
+  writeStoredValue(PANEL_STATE_STORAGE_KEY, JSON.stringify({
+    libraryCollapsed: state.libraryCollapsed,
+    inspectorCollapsed: state.inspectorCollapsed,
+    collapsedLibraryGroups: Array.from(state.collapsedLibraryGroups)
+  }));
+}
+
+function applyPanelState() {
+  window.scrollTo(0, 0);
+
+  appShell.classList.toggle("library-collapsed", state.libraryCollapsed);
+  appShell.classList.toggle("inspector-collapsed", state.inspectorCollapsed);
+
+  toggleLibraryPanel.textContent = state.libraryCollapsed ? ">" : "<";
+  toggleLibraryPanel.title = state.libraryCollapsed ? "Expand node library" : "Collapse node library";
+  toggleLibraryPanel.setAttribute("aria-label", toggleLibraryPanel.title);
+  toggleLibraryPanel.setAttribute("aria-expanded", String(!state.libraryCollapsed));
+
+  toggleInspectorPanel.textContent = state.inspectorCollapsed ? "<" : ">";
+  toggleInspectorPanel.title = state.inspectorCollapsed ? "Expand node inspector" : "Collapse node inspector";
+  toggleInspectorPanel.setAttribute("aria-label", toggleInspectorPanel.title);
+  toggleInspectorPanel.setAttribute("aria-expanded", String(!state.inspectorCollapsed));
+
+  window.requestAnimationFrame(resizeGraphCanvas);
+  window.setTimeout(resizeGraphCanvas, 180);
+}
+
+function togglePanel(name) {
+  if (name === "library") state.libraryCollapsed = !state.libraryCollapsed;
+  if (name === "inspector") state.inspectorCollapsed = !state.inspectorCollapsed;
+  applyPanelState();
+  savePanelState();
+}
+
 function handleKeyboardShortcuts(event) {
   const target = event.target;
   const isEditable = target?.matches?.("input, textarea, select") || target?.isContentEditable;
@@ -2228,13 +2300,17 @@ loadPatchButton.addEventListener("click", loadPatchFromStorage);
 exportPatchButton.addEventListener("click", exportPatch);
 openPatchButton.addEventListener("click", openPatchFile);
 themeSelect.addEventListener("change", () => applyTheme(themeSelect.value));
+toggleLibraryPanel.addEventListener("click", () => togglePanel("library"));
+toggleInspectorPanel.addEventListener("click", () => togglePanel("inspector"));
 document.querySelector("#fitButton").addEventListener("click", fitGraphView);
 document.querySelector("#exportSvgButton").addEventListener("click", exportSvg);
 document.querySelector("#exportPngButton").addEventListener("click", exportPng);
 window.addEventListener("resize", resizeGraphCanvas);
 window.addEventListener("keydown", handleKeyboardShortcuts);
 
+loadPanelState();
 applyTheme(readStoredValue(THEME_STORAGE_KEY), { persist: false });
+applyPanelState();
 renderLibrary();
 setupGraph();
 selectGraphNode(null);

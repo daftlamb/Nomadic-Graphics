@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nomadic Graphics Prototype</title>
+    <link rel="stylesheet" href="vendor/litegraph/litegraph.css" />
+    <link rel="stylesheet" href="styles.css?v=14" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="library-panel" aria-label="Node library">
+        <header class="brand">
+          <div>
+            <p class="eyebrow">Nomadic Graphics</p>
+            <h1>Node Library</h1>
+          </div>
+          <button class="icon-button" id="randomizeButton" title="Reseed graph" aria-label="Reseed graph">R</button>
+        </header>
+
+        <nav class="node-library" id="nodeLibrary" aria-label="Process library"></nav>
+      </aside>
+
+      <section class="workspace-panel" aria-label="Node workspace">
+        <header class="top-bar">
+          <div>
+            <p class="eyebrow">LiteGraph Workspace</p>
+          <h2 id="workflowTitle">Manual Geometry Graph</h2>
+          </div>
+          <div class="export-actions">
+            <button id="undoButton">Undo</button>
+            <button id="redoButton">Redo</button>
+            <button id="savePatchButton">Save</button>
+            <button id="loadPatchButton">Load</button>
+            <button id="exportPatchButton">Export</button>
+            <button id="openPatchButton">Open</button>
+            <select id="themeSelect" aria-label="Interface theme">
+              <option value="paper">Paper</option>
+              <option value="survey">Survey</option>
+              <option value="night">Night</option>
+            </select>
+            <button id="fitButton">Fit</button>
+            <button id="exportSvgButton">SVG</button>
+            <button id="exportPngButton">PNG</button>
+          </div>
+        </header>
+
+        <div class="graph-viewport">
+          <canvas id="graphCanvas"></canvas>
+        </div>
+      </section>
+
+      <aside class="params-panel" aria-label="Node parameters">
+        <header>
+          <p class="eyebrow">Node Inspector</p>
+          <h2 id="selectedNodeName">No Node Selected</h2>
+        </header>
+
+        <section class="process-note">
+          <p id="nodeDescription">Add nodes from the library, connect typed outputs to compatible inputs, then attach a Preview node.</p>
+        </section>
+
+        <section class="inspector-preview-wrap" aria-label="Selected node preview">
+          <canvas id="inspectorPreview" width="520" height="360"></canvas>
+        </section>
+
+        <section class="specimen">
+          <p class="eyebrow">Port / Data</p>
+          <ul id="outputTraits"></ul>
+        </section>
+      </aside>
+    </main>
+
+    <script src="vendor/litegraph/litegraph.js"></script>
+    <script src="vendor/paper/paper-full.min.js"></script>
+    <script src="geometry-engine.js?v=31"></script>
+    <script src="app.js?v=49"></script>
+  </body>
+</html>

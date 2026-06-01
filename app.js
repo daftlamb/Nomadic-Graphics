@@ -511,6 +511,24 @@ const nodeGroups = [
           ["slider", "Fade", 16, 0, 100],
           ["slider", "Seed", 0, 0, 100]
         ]
+      },
+      {
+        type: "nomadic/material/graffiti_stroke",
+        title: "Graffiti Stroke",
+        input: "image,shape,traces,artifact,layers",
+        output: "image",
+        description: "Redraws visual data as soft hand-made marker ink.",
+        widgets: [
+          ["combo", "Mode", "Edge", ["Edge", "Source", "Solid"]],
+          ["combo", "Color", "Signal Red", ["Signal Red", "Vermilion", "Ink", "Moss", "Random"]],
+          ["slider", "Width", 18, 4, 56],
+          ["slider", "Wobble", 42, 0, 100],
+          ["slider", "Repeat", 3, 1, 8],
+          ["slider", "Bleed", 46, 0, 100],
+          ["slider", "Grain", 38, 0, 100],
+          ["slider", "Softness", 34, 0, 100],
+          ["slider", "Seed", 0, 0, 100]
+        ]
       }
     ]
   },
@@ -1204,6 +1222,19 @@ function runNode(def, inputs, props) {
       dust: props.dust,
       paper: props.paper,
       fade: props.fade,
+      seed: props.seed
+    }, state.seed);
+  }
+  if (def.type === "nomadic/material/graffiti_stroke") {
+    return NomadicGeometry.graffitiStroke(input, {
+      mode: props.mode,
+      color: props.color,
+      width: props.width,
+      wobble: props.wobble,
+      repeat: props.repeat,
+      bleed: props.bleed,
+      grain: props.grain,
+      softness: props.softness,
       seed: props.seed
     }, state.seed);
   }

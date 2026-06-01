@@ -17,6 +17,7 @@
   const rasterCanvasCache = new Map();
   const rasterDataUrlCache = new Map();
   const weatheringCache = new Map();
+  const graffitiCache = new Map();
   const CACHE_LIMIT = 24;
 
   const paperScope = window.paper ? new paper.PaperScope() : null;
@@ -673,6 +674,249 @@
     const cx = (x % step) / step - 0.5;
     const cy = (y % step) / step - 0.5;
     return clamp(1 - Math.hypot(cx, cy) * 1.9);
+  }
+
+  function graffitiStroke(input, options = {}, seed = 0) {
+    if (!input || typeof document === "undefined") return null;
+    const mode = options.mode || "Edge";
+    const localSeed = seed + Number(options.seed || 0) * 9973;
+    const cols = 620;
+    const rows = Math.round(cols * (HEIGHT / WIDTH));
+    const cacheKey = graffitiCacheKey(input, options, localSeed, cols, rows);
+    const cached = graffitiCache.get(cacheKey);
+    if (cached) return graffitiImageResult(input, cached, options, cacheKey, cols, rows);
+
+    const source = graffitiSourceMask(input, cols, rows, mode, localSeed);
+    if (!source) return null;
+
+    const widthPx = Math.max(1, Math.round(Number(options.width || 18) * cols / WIDTH));
+    const wobble = Number(options.wobble || 42) / 100;
+    const repeat = Math.max(1, Math.round(Number(options.repeat || 3)));
+    const bleed = Number(options.bleed || 46) / 100;
+    const grain = Number(options.grain || 38) / 100;
+    const softness = Number(options.softness || 34) / 100;
+    const color = graffitiColor(options.color, localSeed);
+    const repeated = graffitiRepeatedMask(source, cols, rows, { repeat, wobble }, localSeed);
+    const line = boxBlurMask(repeated, cols, rows, Math.max(1, Math.round(widthPx * 0.34)), 1);
+    const bloom = boxBlurMask(line, cols, rows, Math.max(1, Math.round(widthPx * (0.8 + softness * 1.4))), 2);
+    const output = new Uint8ClampedArray(cols * rows * 4);
+
+    for (let index = 0; index < cols * rows; index += 1) {
+      const x = index % cols;
+      const y = Math.floor(index / cols);
+      const fiber = noise(localSeed + 811, Math.floor(x * 0.27 + y * 2.4));
+      const powder = noise(localSeed + 823, index * 7);
+      const lineInk = clamp(line[index] * (1.25 + widthPx * 0.22));
+      const halo = clamp(bloom[index] * bleed * 1.4);
+      let alpha = clamp(lineInk * 0.92 + halo * 0.64);
+      alpha *= 0.72 + fiber * 0.38 + Math.sin((x + localSeed) * 0.07) * grain * 0.06;
+      if (powder < grain * 0.038 && alpha < 0.42) alpha *= 0.18 + powder * 3.4;
+      if (powder > 0.995 - grain * 0.002 && bloom[index] > 0.04) alpha = Math.max(alpha, 0.12 + grain * 0.2);
+
+      const offset = index * 4;
+      const tone = (noise(localSeed + 829, index * 3) - 0.5) * (18 + grain * 26);
+      output[offset] = clamp(color.r + tone, 0, 255);
+      output[offset + 1] = clamp(color.g + tone * 0.18, 0, 255);
+      output[offset + 2] = clamp(color.b + tone * 0.12, 0, 255);
+      output[offset + 3] = Math.round(clamp(alpha) * 255);
+    }
+
+    const pixels = Array.from(output);
+    cacheSetLimited(graffitiCache, cacheKey, pixels);
+    return graffitiImageResult(input, pixels, options, cacheKey, cols, rows);
+  }
+
+  function graffitiCacheKey(input, options, seed, cols, rows) {
+    return [
+      "graffiti",
+      cols,
+      rows,
+      visualFingerprint(input),
+      options.mode || "Edge",
+      options.color || "Signal Red",
+      Math.round(Number(options.width || 18)),
+      Math.round(Number(options.wobble || 42)),
+      Math.round(Number(options.repeat || 3)),
+      Math.round(Number(options.bleed || 46)),
+      Math.round(Number(options.grain || 38)),
+      Math.round(Number(options.softness || 34)),
+      seed
+    ].join(":");
+  }
+
+  function graffitiImageResult(input, pixels, options, cacheKey, cols, rows) {
+    const mode = options.mode || "Edge";
+    return {
+      ngType: "Image",
+      label: `${input.label || input.ngType} / Graffiti Stroke`,
+      dataUrl: null,
+      pixels,
+      cols,
+      rows,
+      originalWidth: cols,
+      originalHeight: rows,
+      width: WIDTH,
+      height: HEIGHT,
+      originX: 0,
+      originY: 0,
+      opacity: 1,
+      blendMode: "Normal",
+      rasterKey: `graffiti:${cacheKey}`,
+      history: (input.history || [input.label || input.ngType]).concat([`Graffiti Stroke(${mode})`]),
+      stats: {
+        source: input.ngType,
+        mode,
+        width: Math.round(Number(options.width || 18)),
+        repeat: Math.round(Number(options.repeat || 3)),
+        bleed: Math.round(Number(options.bleed || 46)),
+        grain: Math.round(Number(options.grain || 38))
+      }
+    };
+  }
+
+  function graffitiSourceMask(input, cols, rows, mode, seed) {
+    const canvas = document.createElement("canvas");
+    canvas.width = cols;
+    canvas.height = rows;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.clearRect(0, 0, cols, rows);
+    ctx.save();
+    ctx.scale(cols / WIDTH, rows / HEIGHT);
+    const fit = contentFit(input);
+    ctx.translate(fit.x, fit.y);
+    ctx.scale(fit.scale, fit.scale);
+    drawContent(ctx, input);
+    ctx.restore();
+    const pixels = ctx.getImageData(0, 0, cols, rows).data;
+    const base = new Float32Array(cols * rows);
+    const isImageSource = isType(input, "Image") || (input.history || []).some((item) => String(item).includes("Image Input"));
+
+    for (let index = 0; index < cols * rows; index += 1) {
+      const offset = index * 4;
+      const a = (pixels[offset + 3] || 0) / 255;
+      if (a <= 0.01) continue;
+      const r = (pixels[offset] || 0) / 255;
+      const g = (pixels[offset + 1] || 0) / 255;
+      const b = (pixels[offset + 2] || 0) / 255;
+      const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      base[index] = isImageSource ? clamp((1 - luma) * 1.25) * a : a;
+    }
+
+    if (mode === "Solid") return base;
+    if (mode === "Source") return boxBlurMask(base, cols, rows, 1, 1);
+    return graffitiEdgeMask(base, cols, rows, isImageSource, seed);
+  }
+
+  function graffitiEdgeMask(base, cols, rows, isImageSource, seed) {
+    const output = new Float32Array(base.length);
+    for (let y = 1; y < rows - 1; y += 1) {
+      for (let x = 1; x < cols - 1; x += 1) {
+        const index = y * cols + x;
+        const gx =
+          -base[index - cols - 1] - base[index - 1] * 2 - base[index + cols - 1] +
+          base[index - cols + 1] + base[index + 1] * 2 + base[index + cols + 1];
+        const gy =
+          -base[index - cols - 1] - base[index - cols] * 2 - base[index - cols + 1] +
+          base[index + cols - 1] + base[index + cols] * 2 + base[index + cols + 1];
+        const edge = Math.sqrt(gx * gx + gy * gy);
+        const darkCarry = isImageSource ? Math.max(0, base[index] - 0.54) * 0.3 : 0;
+        const broken = noise(seed + 853, index * 5) < 0.018 ? 0.55 : 1;
+        output[index] = clamp((edge * (isImageSource ? 1.45 : 1.1) + darkCarry) * broken);
+      }
+    }
+    return output;
+  }
+
+  function graffitiRepeatedMask(source, cols, rows, options, seed) {
+    const output = new Float32Array(source.length);
+    const repeat = options.repeat || 1;
+    const wobble = options.wobble || 0;
+    for (let pass = 0; pass < repeat; pass += 1) {
+      const passWeight = 1 / Math.sqrt(pass + 1);
+      const dx = (noise(seed + 861, pass * 17) - 0.5) * (1.5 + wobble * 9);
+      const dy = (noise(seed + 863, pass * 23) - 0.5) * (1.2 + wobble * 7);
+      const phase = noise(seed + 867, pass * 29) * TAU;
+      for (let y = 0; y < rows; y += 1) {
+        const rowWave = Math.sin(y * (0.022 + wobble * 0.028) + phase) * wobble * 4.8;
+        for (let x = 0; x < cols; x += 1) {
+          const index = y * cols + x;
+          const colWave = Math.sin(x * (0.018 + wobble * 0.02) + phase * 0.7) * wobble * 2.8;
+          const value = sampleMask(source, cols, rows, x + dx + rowWave, y + dy + colWave);
+          output[index] = Math.max(output[index], value * passWeight);
+        }
+      }
+    }
+    return output;
+  }
+
+  function sampleMask(values, cols, rows, x, y) {
+    const ix = Math.max(0, Math.min(cols - 1, Math.round(x)));
+    const iy = Math.max(0, Math.min(rows - 1, Math.round(y)));
+    return values[iy * cols + ix] || 0;
+  }
+
+  function boxBlurMask(values, cols, rows, radius, passes = 1) {
+    if (!radius) return values.slice();
+    let source = values;
+    let target = new Float32Array(values.length);
+    for (let pass = 0; pass < passes; pass += 1) {
+      for (let y = 0; y < rows; y += 1) {
+        for (let x = 0; x < cols; x += 1) {
+          let sum = 0;
+          let count = 0;
+          for (let xx = Math.max(0, x - radius); xx <= Math.min(cols - 1, x + radius); xx += 1) {
+            sum += source[y * cols + xx];
+            count += 1;
+          }
+          target[y * cols + x] = sum / count;
+        }
+      }
+      const horizontal = target;
+      target = new Float32Array(values.length);
+      for (let y = 0; y < rows; y += 1) {
+        for (let x = 0; x < cols; x += 1) {
+          let sum = 0;
+          let count = 0;
+          for (let yy = Math.max(0, y - radius); yy <= Math.min(rows - 1, y + radius); yy += 1) {
+            sum += horizontal[yy * cols + x];
+            count += 1;
+          }
+          target[y * cols + x] = sum / count;
+        }
+      }
+      source = target;
+      target = new Float32Array(values.length);
+    }
+    return source;
+  }
+
+  function graffitiColor(name, seed) {
+    if (name === "Random") {
+      const colors = [graffitiColor("Signal Red", seed), graffitiColor("Vermilion", seed), graffitiColor("Ink", seed), graffitiColor("Moss", seed)];
+      return colors[Math.floor(noise(seed + 877, 1) * colors.length) % colors.length];
+    }
+    return {
+      "Signal Red": { r: 214, g: 28, b: 42 },
+      Vermilion: { r: 224, g: 65, b: 42 },
+      Ink: { r: 32, g: 35, b: 31 },
+      Moss: { r: 83, g: 107, b: 87 }
+    }[name] || { r: 214, g: 28, b: 42 };
+  }
+
+  function visualFingerprint(data) {
+    if (!data) return "empty";
+    if (isType(data, "Image")) return `image:${data.cols}x${data.rows}:${pixelFingerprint(data.pixels)}:${data.scale || 100}`;
+    if (isType(data, "LayerSet")) {
+      return `layers:${(data.layers || []).map((layer) => `${round(layer.opacity ?? 1)}:${visualFingerprint(layer.data)}`).join("|")}`;
+    }
+    const bounds = contentBounds(data);
+    return [
+      data.ngType,
+      data.label,
+      JSON.stringify(data.stats || {}),
+      bounds ? `${round(bounds.minX)},${round(bounds.minY)},${round(bounds.maxX)},${round(bounds.maxY)}` : "",
+      (data.history || []).join("/")
+    ].join(":");
   }
 
   function createNoiseField(options, seed) {
@@ -4873,6 +5117,7 @@
     createImageField,
     imageToField,
     imageWeathering,
+    graffitiStroke,
     createNoiseField,
     createValue,
     createRandomArray,

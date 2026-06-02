@@ -26,6 +26,7 @@ const TEXT_FONT_OPTIONS = [
   "Courier New",
   "Impact"
 ];
+const COLOR_PALETTE_OPTIONS = ["Survey", "Warm", "Cool", "Ink", "Pop", "Neon", "Riso", "Candy", "Signal", "Random"];
 
 const DATA_TYPES = {
   image: "Image",
@@ -464,7 +465,10 @@ const nodeGroups = [
         input: "traces",
         output: "traces",
         description: "Changes trace curvature and flow tension.",
-        widgets: [["slider", "Tension", 48, 0, 100]]
+        widgets: [
+          ["slider", "Tension", 36, 0, 100],
+          ["slider", "Sag", 24, -120, 120]
+        ]
       },
       {
         type: "nomadic/process/wind",
@@ -488,10 +492,15 @@ const nodeGroups = [
       {
         type: "nomadic/process/dither",
         title: "Dither",
-        input: "shape,traces,field,layers",
-        output: "artifact,layers",
-        description: "Resamples shape, field, traces, or layers into dot artifacts.",
-        widgets: [["slider", "Density", 48, 4, 100]]
+        input: "image,tiles,layers",
+        output: "image,layers",
+        description: "Applies real raster dithering to images, tile sets, or layer stacks.",
+        widgets: [
+          ["combo", "Mode", "Bayer", ["Bayer", "Floyd Steinberg", "Halftone"]],
+          ["slider", "Threshold", 50, 0, 100],
+          ["slider", "Scale", 2, 1, 8],
+          ["slider", "Mix", 100, 0, 100]
+        ]
       },
       {
         type: "nomadic/process/repeat",
@@ -621,6 +630,10 @@ const nodeGroups = [
         description: "Ages raster images or tile sets with paper, photocopy, toner, and transfer artifacts.",
         widgets: [
           ["combo", "Mode", "Photocopy", ["Photocopy", "Print Transfer", "Newsprint", "Archive Dust"]],
+          ["combo", "Tone", "Neutral", ["Neutral", "Tint", "Duotone"]],
+          ["combo", "Ink Color", "Signal Red", ["Signal Red", "Vermilion", "Ink", "Moss", "Water", "Clay"]],
+          ["combo", "Paper Color", "Paper", ["Paper", "White", "Sand", "Moss", "Water", "Clay"]],
+          ["slider", "Tone Amount", 0, 0, 100],
           ["slider", "Exposure", 0, -80, 80],
           ["slider", "Contrast", 72, 0, 100],
           ["slider", "Grain", 46, 0, 100],
@@ -659,7 +672,7 @@ const nodeGroups = [
         output: "color",
         description: "Outputs a reusable ink color.",
         widgets: [
-          ["combo", "Palette", "Moss", ["Ink", "Moss", "Water", "Clay", "Sand", "Paper", "Random"]],
+          ["combo", "Palette", "Moss", ["Ink", "Moss", "Water", "Clay", "Sand", "Paper", "Signal Red", "Vermilion", "Lemon", "Cyan", "Magenta", "Random"]],
           ["slider", "Seed", 0, 0, 100],
           ["slider", "Opacity", 72, 0, 100]
         ]
@@ -714,12 +727,12 @@ const nodeGroups = [
       {
         type: "nomadic/style/random_stroke_color",
         title: "Random Color",
-        input: "shape,traces,artifact,layers",
-        output: "shape,traces,artifact,layers",
-        description: "Assigns palette colors to strokes and fills.",
+        input: "image,tiles,cells,shape,traces,artifact,layers",
+        output: "image,tiles,cells,shape,traces,artifact,layers",
+        description: "Assigns vivid palette colors to raster, tile, cell, stroke, and fill data.",
         widgets: [
           ["combo", "Target", "Both", ["Both", "Stroke", "Fill"]],
-          ["combo", "Palette", "Survey", ["Survey", "Warm", "Cool", "Ink", "Random"]],
+          ["combo", "Palette", "Pop", COLOR_PALETTE_OPTIONS],
           ["slider", "Variation", 76, 0, 100],
           ["slider", "Seed", 0, 0, 100],
           ["slider", "Opacity", 68, 0, 100]
@@ -772,6 +785,32 @@ const nodeGroups = [
           ["combo", "Palette", "Survey", ["Survey", "Warm", "Cool", "Ink", "Random"]],
           ["slider", "Seed", 0, 0, 100],
           ["slider", "Opacity", 90, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/style/slice_labels",
+        title: "Slice Labels",
+        inputs: [
+          { name: "Slices", type: "tiles,cells" },
+          { name: "Array", type: "array", optional: true },
+          { name: "Color", type: "color", optional: true }
+        ],
+        output: "layers",
+        description: "Maps text characters onto existing image tiles or trace cells.",
+        widgets: [
+          ["text", "Text", "POISON GIRL FRIENDS"],
+          ["combo", "Mapping", "Skip Spaces", ["Skip Spaces", "Keep Spaces", "Rows From Spaces", "Array Values", "Index"]],
+          ["combo", "Fit", "Fit Tile", ["Fit Tile", "Uniform", "Manual"]],
+          ["combo", "Font", "Mononoki", TEXT_FONT_OPTIONS],
+          ["slider", "Size", 120, 8, 420],
+          ["slider", "Padding", 18, 0, 120],
+          ["slider", "Offset X", 0, -180, 180],
+          ["slider", "Offset Y", 0, -180, 180],
+          ["slider", "Rotation", 0, -45, 45],
+          ["combo", "Color Mode", "Input", ["Input", "Random", "Ink", "Moss", "Water", "Clay", "Sand", "Paper"]],
+          ["combo", "Palette", "Survey", ["Survey", "Warm", "Cool", "Ink", "Random"]],
+          ["slider", "Seed", 0, 0, 100],
+          ["slider", "Opacity", 96, 0, 100]
         ]
       }
     ]
@@ -869,7 +908,12 @@ const nodeGroups = [
         widgets: [
           ["combo", "Background", "Paper", ["Paper", "White", "Dark", "Custom", "Transparent"]],
           ["text", "Background Color", "#f8f5eb"],
-          ["combo", "Grid", "On", ["On", "Off"]]
+          ["combo", "Grid", "On", ["On", "Off"]],
+          ["combo", "Canvas Size", "Default", ["Default", "From Image", "Square", "16:9", "4:5", "Custom"]],
+          ["slider", "Width", 1100, 256, 2400],
+          ["slider", "Height", 760, 256, 2400],
+          ["combo", "Fit", "Crop", ["Crop", "Fit Content"]],
+          ["combo", "Export Scale", "2x", ["1x", "2x", "4x"]]
         ],
         preview: true
       }
@@ -883,6 +927,7 @@ const THEME_STORAGE_KEY = "nomadic-graphics.theme";
 const PANEL_STATE_STORAGE_KEY = "nomadic-graphics.panels";
 const UNDO_LIMIT = 80;
 const LINK_INSERT_HIT_TARGET_PX = 24;
+const LINK_DROP_HIT_TARGET_PX = 46;
 const LINK_HIT_SAMPLE_COUNT = 32;
 
 const state = {
@@ -905,7 +950,8 @@ const state = {
   undoIndex: -1,
   undoTimer: null,
   lastUndoSnapshot: "",
-  isRestoring: false
+  isRestoring: false,
+  draggingNodeForInsert: null
 };
 
 const graphCanvasElement = document.querySelector("#graphCanvas");
@@ -952,7 +998,7 @@ function registerNomadicNodes() {
         this.lastOutput = this.getInputData(0) || null;
         state.lastPreview = this.lastOutput || state.lastPreview;
         state.lastPreviewOptions = { ...this.properties };
-        resizePreviewNodeToData(this, this.lastOutput, def);
+        resizePreviewNodeToArtboard(this, this.lastOutput, def);
         return;
       }
       const inputs = inputDefsFor(def).map((_, index) => this.getInputData(index) || null);
@@ -978,7 +1024,11 @@ function registerNomadicNodes() {
           height: this.size[1] - top - 12,
           background: this.properties.background,
           backgroundColor: this.properties.background_color,
-          grid: this.properties.grid
+          grid: this.properties.grid,
+          canvasSize: this.properties.canvas_size,
+          artboardWidth: this.properties.width,
+          artboardHeight: this.properties.height,
+          fit: this.properties.fit
         });
       }
     };
@@ -1056,18 +1106,9 @@ function nodeSizeFor(def) {
   return [248, height];
 }
 
-function resizePreviewNodeToData(node, data, def) {
-  if (!isImageDerivedData(data)) return;
-  const bounds = dataBounds(data);
-  if (!bounds) return;
-
-  const padded = {
-    minX: bounds.minX - 46,
-    minY: bounds.minY - 46,
-    maxX: bounds.maxX + 46,
-    maxY: bounds.maxY + 46
-  };
-  const aspect = clampNumber((padded.maxX - padded.minX) / Math.max(1, padded.maxY - padded.minY), 0.22, 2.4);
+function resizePreviewNodeToArtboard(node, data, def) {
+  const artboard = previewArtboard(node.properties, data);
+  const aspect = clampNumber(artboard.width / Math.max(1, artboard.height), 0.22, 2.4);
   const top = 48 + (def.widgets || []).length * 30;
   let contentWidth;
   let contentHeight;
@@ -1088,6 +1129,55 @@ function resizePreviewNodeToData(node, data, def) {
   if (typeof node.setSize === "function") node.setSize(nextSize);
   else node.size = nextSize;
   graphCanvas?.setDirty(true, true);
+}
+
+function previewArtboard(options = {}, data = null) {
+  const preset = options.canvas_size || "Default";
+  if (preset === "From Image") {
+    const bounds = firstImageBounds(data) || dataBounds(data);
+    if (bounds) {
+      return {
+        width: Math.max(1, bounds.maxX - bounds.minX),
+        height: Math.max(1, bounds.maxY - bounds.minY),
+        bounds
+      };
+    }
+  }
+  const presetSizes = {
+    Default: [NomadicGeometry.WIDTH, NomadicGeometry.HEIGHT],
+    Square: [1080, 1080],
+    "16:9": [1920, 1080],
+    "4:5": [1080, 1350]
+  };
+  const [presetWidth, presetHeight] = presetSizes[preset] || [Number(options.width || NomadicGeometry.WIDTH), Number(options.height || NomadicGeometry.HEIGHT)];
+  const width = Math.max(1, Number(preset === "Custom" ? options.width : presetWidth) || NomadicGeometry.WIDTH);
+  const height = Math.max(1, Number(preset === "Custom" ? options.height : presetHeight) || NomadicGeometry.HEIGHT);
+  return { width, height };
+}
+
+function firstImageBounds(data) {
+  const image = firstImageData(data);
+  if (!image) return null;
+  const minX = Number(image.originX ?? 0);
+  const minY = Number(image.originY ?? 0);
+  return {
+    minX,
+    minY,
+    maxX: minX + Number(image.width || NomadicGeometry.WIDTH),
+    maxY: minY + Number(image.height || NomadicGeometry.HEIGHT)
+  };
+}
+
+function firstImageData(data) {
+  if (!data) return null;
+  if (data.ngType === "Image") return data;
+  if (data.ngType === "LayerSet") {
+    for (const layer of data.layers || []) {
+      const image = firstImageData(layer.data);
+      if (image) return image;
+    }
+  }
+  return null;
 }
 
 function isImageDerivedData(data) {
@@ -1387,6 +1477,10 @@ function runNode(def, inputs, props) {
   if (def.type === "nomadic/material/image_weathering") {
     return NomadicGeometry.imageWeathering(input, {
       mode: props.mode,
+      tone: props.tone,
+      inkColor: props.ink_color,
+      paperColor: props.paper_color,
+      toneAmount: props.tone_amount,
       exposure: props.exposure,
       contrast: props.contrast,
       grain: props.grain,
@@ -1482,7 +1576,7 @@ function runNode(def, inputs, props) {
     });
   }
   if (def.type === "nomadic/process/curve_tension") {
-    return NomadicGeometry.curveTension(input, { tension: props.tension });
+    return NomadicGeometry.curveTension(input, { tension: props.tension, sag: props.sag });
   }
   if (def.type === "nomadic/process/wind") {
     return NomadicGeometry.wind(input, { force: props.force, angle: props.angle }, state.seed);
@@ -1491,7 +1585,12 @@ function runNode(def, inputs, props) {
     return NomadicGeometry.erode(input, { amount: props.amount }, state.seed);
   }
   if (def.type === "nomadic/process/dither") {
-    return NomadicGeometry.dither(input, { amount: props.density }, state.seed);
+    return NomadicGeometry.dither(input, {
+      mode: props.mode,
+      threshold: props.threshold,
+      scale: props.scale,
+      mix: props.mix
+    }, state.seed);
   }
   if (def.type === "nomadic/process/repeat") {
     return NomadicGeometry.repeatData(input, {
@@ -1634,6 +1733,25 @@ function runNode(def, inputs, props) {
       align: props.align,
       size: props.size,
       padding: props.padding,
+      colorMode: props.color_mode,
+      palette: props.palette,
+      seed: props.seed,
+      opacity: props.opacity
+    }, state.seed);
+  }
+  if (def.type === "nomadic/style/slice_labels") {
+    loadTextFont(props.font);
+    return NomadicGeometry.sliceLabels(inputs[0], inputs[1], {
+      color: inputs[2],
+      text: props.text,
+      mapping: props.mapping,
+      fit: props.fit,
+      font: props.font,
+      size: props.size,
+      padding: props.padding,
+      offsetX: props.offset_x,
+      offsetY: props.offset_y,
+      rotation: props.rotation,
       colorMode: props.color_mode,
       palette: props.palette,
       seed: props.seed,
@@ -1804,6 +1922,60 @@ function setWidgetValue(node, name, value) {
   if (widget) widget.value = value;
 }
 
+function numericWidgetAtEvent(event) {
+  if (!graphCanvas || !graph) return null;
+  const point = graphPointFromEvent(event);
+  const node = graph.getNodeOnPos(point[0], point[1], graphCanvas.visible_nodes, 5);
+  if (!node?.widgets?.length || node.flags?.collapsed) return null;
+  const localX = point[0] - node.pos[0];
+  const localY = point[1] - node.pos[1];
+  const width = node.size?.[0] || 0;
+
+  for (const widget of node.widgets) {
+    if (!widget || widget.disabled || !["slider", "number"].includes(widget.type)) continue;
+    const height = widget.computeSize ? widget.computeSize(width)[1] : LiteGraph.NODE_WIDGET_HEIGHT;
+    const widgetWidth = widget.width || width;
+    const y = widget.last_y ?? widget.y;
+    if (y === undefined) continue;
+    if (localX >= 6 && localX <= widgetWidth - 12 && localY >= y && localY <= y + height) {
+      return { node, widget };
+    }
+  }
+  return null;
+}
+
+function promptNumericWidgetValue(node, widget, event) {
+  const precision = widget.options?.precision ?? 3;
+  const current = Number(widget.value);
+  const initial = Number.isFinite(current) ? Number(current.toFixed(precision)) : widget.value;
+  graphCanvas.prompt(widget.name || "Value", initial, (rawValue) => {
+    const nextValue = parseNumericInput(rawValue);
+    if (!Number.isFinite(nextValue)) return;
+    const clamped = clampWidgetValue(nextValue, widget);
+    widget.value = clamped;
+    widget.callback?.(clamped, graphCanvas, node, null, event);
+    runGraphOnce();
+    scheduleUndoSnapshot();
+  }, event);
+}
+
+function parseNumericInput(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return NaN;
+  if (!/^[\d+\-*/().\s]+$/.test(text)) return Number(text);
+  try {
+    return Number(Function(`"use strict"; return (${text});`)());
+  } catch {
+    return Number(text);
+  }
+}
+
+function clampWidgetValue(value, widget) {
+  const min = widget.options?.min;
+  const max = widget.options?.max;
+  return clampNumber(value, Number.isFinite(min) ? min : -Infinity, Number.isFinite(max) ? max : Infinity);
+}
+
 function renderLibrary() {
   nodeLibrary.innerHTML = "";
   const mode = document.createElement("div");
@@ -1849,7 +2021,7 @@ function renderLibrary() {
       button.type = "button";
       button.textContent = node.title;
       button.draggable = true;
-      button.addEventListener("click", () => addGraphNode(node.type));
+      button.addEventListener("click", () => addGraphNode(node.type, { linkId: currentInsertLinkId() }));
       button.addEventListener("dragstart", (event) => {
         event.dataTransfer.setData("application/x-nomadic-node", node.type);
         event.dataTransfer.effectAllowed = "copy";
@@ -1897,6 +2069,7 @@ function setupGraph() {
   graphCanvas.onNodeDeselected = () => selectGraphNode(null);
   graphCanvas.getMenuOptions = nomadicCanvasMenuOptions;
   bindGraphCanvasInsertEvents();
+  bindPreciseNumericInput();
   applyTheme(state.theme, { persist: false });
   runGraphOnce();
   workflowTitle.textContent = "Manual Geometry Graph";
@@ -1926,7 +2099,7 @@ function addGraphNode(type, options = {}) {
   const def = nodeDefs.get(type);
   const count = state.addCounts[def.group] || 0;
   state.addCounts[def.group] = count + 1;
-  const insertPlan = planLinkInsertion(node, options.linkId);
+  const insertPlan = planLinkInsertion(node, options.linkId || linkIdForDropPoint(options.position, node));
   node.pos = insertPlan
     ? positionForInsertedNode(insertPlan.link, node, options.position)
     : options.position
@@ -1943,8 +2116,26 @@ function addGraphNode(type, options = {}) {
 function bindGraphCanvasInsertEvents() {
   graphCanvasElement.addEventListener("mousemove", (event) => {
     state.lastCanvasPoint = graphPointFromEvent(event);
-    if (state.selectedLinkId) return;
     setHoveredInsertLink(findNearestLinkId(state.lastCanvasPoint));
+  });
+
+  graphCanvasElement.addEventListener("mousedown", (event) => {
+    const point = graphPointFromEvent(event);
+    const node = graph.getNodeOnPos(point[0], point[1], graphCanvas.visible_nodes, 5);
+    state.draggingNodeForInsert = node ? {
+      node,
+      startX: node.pos?.[0] ?? 0,
+      startY: node.pos?.[1] ?? 0
+    } : null;
+  });
+
+  graphCanvasElement.addEventListener("mouseup", (event) => {
+    const drag = state.draggingNodeForInsert;
+    state.draggingNodeForInsert = null;
+    if (!drag?.node || drag.node.flags?.collapsed) return;
+    const moved = Math.hypot((drag.node.pos?.[0] ?? 0) - drag.startX, (drag.node.pos?.[1] ?? 0) - drag.startY);
+    if (moved < 8) return;
+    window.setTimeout(() => maybeInsertExistingNodeOnLink(drag.node, graphPointFromEvent(event)), 0);
   });
 
   graphCanvasElement.addEventListener("mouseleave", () => {
@@ -1970,7 +2161,8 @@ function bindGraphCanvasInsertEvents() {
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
     const point = graphPointFromEvent(event);
-    if (!state.selectedLinkId) setHoveredInsertLink(findNearestLinkId(point));
+    state.lastCanvasPoint = point;
+    setHoveredInsertLink(findNearestLinkId(point));
   });
 
   graphCanvasElement.addEventListener("drop", (event) => {
@@ -1978,8 +2170,18 @@ function bindGraphCanvasInsertEvents() {
     if (!type) return;
     event.preventDefault();
     const point = graphPointFromEvent(event);
-    addGraphNode(type, { position: point, linkId: findNearestLinkId(point) });
+    addGraphNode(type, { position: point });
   });
+}
+
+function bindPreciseNumericInput() {
+  graphCanvasElement.addEventListener("dblclick", (event) => {
+    const hit = numericWidgetAtEvent(event);
+    if (!hit) return;
+    event.preventDefault();
+    event.stopPropagation();
+    promptNumericWidgetValue(hit.node, hit.widget, event);
+  }, true);
 }
 
 function graphPointFromEvent(event) {
@@ -1992,13 +2194,19 @@ function graphPointFromEvent(event) {
 }
 
 function setHoveredInsertLink(linkId) {
+  if (state.hoveredLinkId === linkId) return;
   state.hoveredLinkId = linkId;
   updateInsertLinkHighlight();
 }
 
 function setSelectedInsertLink(linkId) {
+  if (state.selectedLinkId === linkId) return;
   state.selectedLinkId = linkId;
   updateInsertLinkHighlight();
+}
+
+function currentInsertLinkId() {
+  return graph?.links?.[state.selectedLinkId] ? state.selectedLinkId : graph?.links?.[state.hoveredLinkId] ? state.hoveredLinkId : null;
 }
 
 function updateInsertLinkHighlight() {
@@ -2018,7 +2226,7 @@ function clearInsertLinkSelection() {
   updateInsertLinkHighlight();
 }
 
-function planLinkInsertion(node, preferredLinkId = null) {
+function planLinkInsertion(node, preferredLinkId = null, options = {}) {
   const link = graph?.links?.[preferredLinkId] || graph?.links?.[state.selectedLinkId] || graph?.links?.[state.hoveredLinkId];
   if (!link) return null;
   const origin = graph.getNodeById(link.origin_id);
@@ -2026,11 +2234,65 @@ function planLinkInsertion(node, preferredLinkId = null) {
   const originOutput = origin?.outputs?.[link.origin_slot];
   const targetInput = target?.inputs?.[link.target_slot];
   if (!origin || !target || !originOutput || !targetInput || !node.inputs || !node.outputs) return null;
+  if (origin === node || target === node) return null;
 
   const inputSlot = node.inputs.findIndex((input) => LiteGraph.isValidConnection(originOutput.type, input.type));
   const outputSlot = node.outputs.findIndex((output) => LiteGraph.isValidConnection(output.type, targetInput.type));
   if (inputSlot < 0 || outputSlot < 0) return null;
+  if (options.requireFreeSlots && (node.inputs[inputSlot]?.link != null || node.outputs[outputSlot]?.links?.length)) return null;
   return { link, origin, target, inputSlot, outputSlot };
+}
+
+function maybeInsertExistingNodeOnLink(node, dropPoint) {
+  if (!graph?._nodes?.includes(node)) return;
+  const linkId = linkIdForNodePlacement(node, dropPoint);
+  const plan = planLinkInsertion(node, linkId, { requireFreeSlots: true });
+  if (!plan) return;
+  insertNodeIntoLink(node, plan);
+  runGraphOnce();
+  scheduleUndoSnapshot();
+}
+
+function linkIdForDropPoint(point, node = null) {
+  if (!point) return currentInsertLinkId();
+  const candidates = [point];
+  if (node?.size) {
+    candidates.push(
+      [point[0] - node.size[0] * 0.45, point[1]],
+      [point[0] + node.size[0] * 0.45, point[1]],
+      [point[0], point[1] - node.size[1] * 0.35],
+      [point[0], point[1] + node.size[1] * 0.35]
+    );
+  }
+  for (const candidate of candidates) {
+    const linkId = findNearestLinkId(candidate, LINK_DROP_HIT_TARGET_PX);
+    if (linkId) return linkId;
+  }
+  return currentInsertLinkId();
+}
+
+function linkIdForNodePlacement(node, dropPoint = null) {
+  const center = nodeCenterPoint(node);
+  const candidates = [
+    center,
+    dropPoint,
+    [node.pos[0], center[1]],
+    [node.pos[0] + node.size[0], center[1]],
+    [center[0], node.pos[1]],
+    [center[0], node.pos[1] + node.size[1]]
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const linkId = findNearestLinkId(candidate, LINK_DROP_HIT_TARGET_PX);
+    if (linkId) return linkId;
+  }
+  return null;
+}
+
+function nodeCenterPoint(node) {
+  return [
+    (node.pos?.[0] || 0) + (node.size?.[0] || 0) * 0.5,
+    (node.pos?.[1] || 0) + (node.size?.[1] || 0) * 0.5
+  ];
 }
 
 function insertNodeIntoLink(node, plan) {
@@ -2052,9 +2314,9 @@ function positionForPointInCurrentView(point, node) {
   return clampNodePositionToCurrentView([point[0] - node.size[0] * 0.5, point[1] - node.size[1] * 0.5], node);
 }
 
-function findNearestLinkId(point) {
+function findNearestLinkId(point, hitTargetPx = LINK_INSERT_HIT_TARGET_PX) {
   if (!point || !graph?.links) return null;
-  const maxDistance = LINK_INSERT_HIT_TARGET_PX / Math.max(0.2, graphCanvas.ds.scale);
+  const maxDistance = hitTargetPx / Math.max(0.2, graphCanvas.ds.scale);
   let bestId = null;
   let bestDistance = maxDistance;
   Object.values(graph.links).forEach((link) => {
@@ -2291,9 +2553,11 @@ function fitGraphView() {
 
 function exportPng() {
   runGraphOnce();
+  const exportScale = parseExportScale(state.lastPreviewOptions.export_scale);
+  const exportSize = previewExportSize(state.lastPreviewOptions, state.lastPreview);
   const canvas = document.createElement("canvas");
-  canvas.width = NomadicGeometry.WIDTH * 2;
-  canvas.height = NomadicGeometry.HEIGHT * 2;
+  canvas.width = Math.max(1, Math.round(exportSize.width * exportScale));
+  canvas.height = Math.max(1, Math.round(exportSize.height * exportScale));
   NomadicGeometry.draw(canvas.getContext("2d"), state.lastPreview, {
     x: 0,
     y: 0,
@@ -2301,14 +2565,42 @@ function exportPng() {
     height: canvas.height,
     background: state.lastPreviewOptions.background,
     backgroundColor: state.lastPreviewOptions.background_color,
-    grid: state.lastPreviewOptions.grid
+    grid: state.lastPreviewOptions.grid,
+    canvasSize: state.lastPreviewOptions.canvas_size,
+    artboardWidth: state.lastPreviewOptions.width,
+    artboardHeight: state.lastPreviewOptions.height,
+    fit: state.lastPreviewOptions.fit
   });
   canvas.toBlob((blob) => downloadBlob(blob, "nomadic-graphics.png"));
 }
 
 function exportSvg() {
   runGraphOnce();
-  downloadBlob(new Blob([NomadicGeometry.toSvg(state.lastPreview, state.lastPreviewOptions)], { type: "image/svg+xml" }), "nomadic-graphics.svg");
+  downloadBlob(new Blob([NomadicGeometry.toSvg(state.lastPreview, previewGeometryOptions(state.lastPreviewOptions))], { type: "image/svg+xml" }), "nomadic-graphics.svg");
+}
+
+function parseExportScale(value) {
+  const parsed = Number(String(value || "2x").replace(/[^\d.]/g, ""));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2;
+}
+
+function previewExportSize(options = {}, data = null) {
+  if ((options.canvas_size || "Default") === "From Image") {
+    const image = firstImageData(data);
+    if (image?.originalWidth && image?.originalHeight) {
+      return { width: Number(image.originalWidth), height: Number(image.originalHeight) };
+    }
+  }
+  return previewArtboard(options, data);
+}
+
+function previewGeometryOptions(options = {}) {
+  return {
+    ...options,
+    canvasSize: options.canvas_size,
+    artboardWidth: options.width,
+    artboardHeight: options.height
+  };
 }
 
 function downloadBlob(blob, filename) {

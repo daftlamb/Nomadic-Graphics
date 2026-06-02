@@ -11,7 +11,12 @@
     Water: "#456c7c",
     Clay: "#9b6048",
     Sand: "#beb7a7",
-    Paper: "#f8f5eb"
+    Paper: "#f8f5eb",
+    "Signal Red": "#d61c2a",
+    Vermilion: "#e0412a",
+    Lemon: "#ffd43b",
+    Cyan: "#00a8ff",
+    Magenta: "#ff2d95"
   };
   const imageCache = new Map();
   const rasterCanvasCache = new Map();
@@ -1062,6 +1067,10 @@
     const dust = clamp(Number(options.dust || 30) / 100);
     const paper = clamp(Number(options.paper || 52) / 100);
     const fade = clamp(Number(options.fade || 16) / 100);
+    const tone = options.tone || "Neutral";
+    const toneAmount = clamp(Number(options.toneAmount || 0) / 100);
+    const inkColor = weatherToneColor(options.inkColor || "Signal Red");
+    const paperColor = weatherToneColor(options.paperColor || "Paper");
     const localSeed = seed + Number(options.seed || 0) * 991;
     const scratches = imageWearScratches(image, { dust, grain }, localSeed);
     const output = new Uint8ClampedArray(image.cols * image.rows * 4);
@@ -1099,9 +1108,15 @@
 
         const tint = mode === "Archive Dust" ? { r: 1.04, g: 1.0, b: 0.92 } : { r: 1, g: 0.99, b: 0.94 };
         const colorCarry = mode === "Print Transfer" ? 0.12 : mode === "Archive Dust" ? 0.08 : 0.02;
-        output[offset] = Math.round(clamp(gray * tint.r * (1 - colorCarry) + (r / 255) * colorCarry) * 255);
-        output[offset + 1] = Math.round(clamp(gray * tint.g * (1 - colorCarry) + (g / 255) * colorCarry) * 255);
-        output[offset + 2] = Math.round(clamp(gray * tint.b * (1 - colorCarry) + (b / 255) * colorCarry) * 255);
+        const base = {
+          r: clamp(gray * tint.r * (1 - colorCarry) + (r / 255) * colorCarry),
+          g: clamp(gray * tint.g * (1 - colorCarry) + (g / 255) * colorCarry),
+          b: clamp(gray * tint.b * (1 - colorCarry) + (b / 255) * colorCarry)
+        };
+        const toned = applyWeatherTone(base, gray, tone, toneAmount, inkColor, paperColor);
+        output[offset] = Math.round(toned.r * 255);
+        output[offset + 1] = Math.round(toned.g * 255);
+        output[offset + 2] = Math.round(toned.b * 255);
         output[offset + 3] = a;
       }
     }
@@ -1118,6 +1133,10 @@
       image.rows,
       pixelFingerprint(image.pixels),
       options.mode || "Photocopy",
+      options.tone || "Neutral",
+      options.inkColor || "Signal Red",
+      options.paperColor || "Paper",
+      Math.round(Number(options.toneAmount || 0)),
       Math.round(Number(options.exposure || 0)),
       Math.round(Number(options.contrast || 72)),
       Math.round(Number(options.grain || 46)),
@@ -1134,6 +1153,8 @@
     const grain = clamp(Number(options.grain || 46) / 100);
     const dust = clamp(Number(options.dust || 30) / 100);
     const paper = clamp(Number(options.paper || 52) / 100);
+    const tone = options.tone || "Neutral";
+    const toneAmount = clamp(Number(options.toneAmount || 0) / 100);
     return {
       ...image,
       dataUrl: null,
@@ -1146,10 +1167,63 @@
         material: mode,
         exposure: Math.round(exposure * 100),
         contrast: Math.round(Number(options.contrast || 72)),
+        tone,
+        toneAmount: Math.round(toneAmount * 100),
         grain: Math.round(grain * 100),
         dust: Math.round(dust * 100),
         paper: Math.round(paper * 100)
       }
+    };
+  }
+
+  function applyWeatherTone(base, gray, tone, amount, inkColor, paperColor) {
+    if (tone === "Neutral" || amount <= 0) return base;
+    if (tone === "Tint") {
+      const tint = mixRgb({ r: 1, g: 1, b: 1 }, inkColor, 0.62);
+      return {
+        r: clamp(lerp(base.r, gray * tint.r, amount)),
+        g: clamp(lerp(base.g, gray * tint.g, amount)),
+        b: clamp(lerp(base.b, gray * tint.b, amount))
+      };
+    }
+    const duo = mixRgb(inkColor, paperColor, gray);
+    return {
+      r: clamp(lerp(base.r, duo.r, amount)),
+      g: clamp(lerp(base.g, duo.g, amount)),
+      b: clamp(lerp(base.b, duo.b, amount))
+    };
+  }
+
+  function weatherToneColor(name) {
+    const colors = {
+      "Signal Red": "#d61c2a",
+      Vermilion: "#e0412a",
+      Ink: PALETTE.Ink,
+      Moss: PALETTE.Moss,
+      Water: PALETTE.Water,
+      Clay: PALETTE.Clay,
+      Sand: PALETTE.Sand,
+      Paper: PALETTE.Paper,
+      White: "#ffffff"
+    };
+    return hexToRgbUnit(colors[name] || colors["Signal Red"]);
+  }
+
+  function mixRgb(a, b, t) {
+    return {
+      r: lerp(a.r, b.r, t),
+      g: lerp(a.g, b.g, t),
+      b: lerp(a.b, b.b, t)
+    };
+  }
+
+  function hexToRgbUnit(hex) {
+    const value = String(hex || "#000000").replace("#", "");
+    const full = value.length === 3 ? value.split("").map((char) => char + char).join("") : value.padEnd(6, "0").slice(0, 6);
+    return {
+      r: parseInt(full.slice(0, 2), 16) / 255,
+      g: parseInt(full.slice(2, 4), 16) / 255,
+      b: parseInt(full.slice(4, 6), 16) / 255
     };
   }
 
@@ -1534,7 +1608,7 @@
     const opacity = clamp(Number(options.opacity || 72) / 100);
     const color = palette === "Random"
       ? randomPaletteColor(seed, Number(options.seed || 0))
-      : PALETTE[palette] || PALETTE.Moss;
+      : solidColor(palette) || PALETTE[palette] || PALETTE.Moss;
     return {
       ngType: "Color",
       label: `Color(${palette})`,
@@ -2151,16 +2225,18 @@
   function curveTension(traceSet, options) {
     if (!isType(traceSet, "TraceSet")) return null;
     const tension = clamp(Number(options.tension || 48) / 100);
-    const paths = (traceSet.paths || []).map((path) => curvePath(path, tension));
+    const sag = Number(options.sag || 0);
+    const paths = (traceSet.paths || []).map((path, index) => curvePath(path, tension, sag, index));
     return {
       ...traceSet,
       label: `${traceSet.label} / Curve Tension`,
       paths,
       style: "curve",
-      history: traceSet.history.concat([`Curve Tension(${Math.round(tension * 100)})`]),
+      history: traceSet.history.concat([`Curve Tension(${Math.round(tension * 100)}, Sag ${Math.round(sag)})`]),
       stats: {
         ...(traceSet.stats || {}),
-        tension: Math.round(tension * 100)
+        tension: Math.round(tension * 100),
+        sag: Math.round(sag)
       }
     };
   }
@@ -2352,6 +2428,59 @@
   function fillArea(input, options, seed) {
     if (isType(input, "LayerSet")) {
       return mapLayerSet(input, (layerData, index) => fillArea(layerData, options, seed + index * 31), "Fill Area");
+    }
+
+    if (isType(input, "Image")) {
+      return randomColorImage(input, options, seed, title);
+    }
+
+    if (isType(input, "TileSet")) {
+      const tiles = (input.tiles || []).map((tile, index) => ({
+        ...tile,
+        tintColor: colorForRandomStroke(index, options, seed + 211),
+        tintAmount: opacity
+      }));
+      return {
+        ...input,
+        label: `${input.label || "TileSet"} / Random Color`,
+        tiles,
+        history: (input.history || ["TileSet"]).concat([title]),
+        stats: {
+          ...(input.stats || {}),
+          randomStrokePalette: palette,
+          randomTileColors: new Set(tiles.map((tile) => tile.tintColor)).size
+        }
+      };
+    }
+
+    if (isType(input, "CellSet")) {
+      const pathColors = pathColorsFor(input.cells || [], options, seed + 233);
+      const cells = (input.cells || []).map((cell, index) => ({
+        ...cell,
+        stroke: {
+          ...(cell.stroke || {}),
+          color: pathColors[index],
+          opacity
+        }
+      }));
+      return {
+        ...input,
+        label: `${input.label || "CellSet"} / Random Color`,
+        cells,
+        stroke: {
+          ...(input.stroke || {}),
+          color: pathColors[0] || input.stroke?.color || "#536b57",
+          pathColors,
+          opacity,
+          width: input.stroke?.width || 0.8
+        },
+        history: (input.history || ["CellSet"]).concat([title]),
+        stats: {
+          ...(input.stats || {}),
+          randomStrokePalette: palette,
+          randomCellColors: new Set(pathColors).size
+        }
+      };
     }
     if (isType(input, "Field")) return fieldMask(input, options, seed);
     if (isType(input, "TraceSet")) {
@@ -3210,6 +3339,39 @@
     return null;
   }
 
+  function randomColorImage(image, options, seed, title) {
+    if (!isType(image, "Image") || !image.pixels?.length || !image.cols || !image.rows) return image || null;
+    const opacity = clamp(Number(options.opacity || 68) / 100);
+    const palette = randomStrokePalette(options.palette || "Pop", seed + Number(options.seed || 0) * 97);
+    const output = new Uint8ClampedArray(image.cols * image.rows * 4);
+    for (let index = 0; index < image.cols * image.rows; index += 1) {
+      const offset = index * 4;
+      const r = image.pixels[offset] || 0;
+      const g = image.pixels[offset + 1] || 0;
+      const b = image.pixels[offset + 2] || 0;
+      const a = image.pixels[offset + 3] ?? 255;
+      const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      const color = hexToRgbUnit(palette[Math.min(palette.length - 1, Math.floor((1 - luma) * palette.length))] || palette[0]);
+      output[offset] = Math.round(lerp(r, color.r * 255, opacity));
+      output[offset + 1] = Math.round(lerp(g, color.g * 255, opacity));
+      output[offset + 2] = Math.round(lerp(b, color.b * 255, opacity));
+      output[offset + 3] = a;
+    }
+    return {
+      ...image,
+      dataUrl: null,
+      pixels: Array.from(output),
+      rasterKey: `random-color:${image.cols}x${image.rows}:${pixelFingerprint(image.pixels)}:${options.palette}:${options.variation}:${options.opacity}:${options.seed}:${seed}`,
+      label: `${image.label || "Image"} / Random Color`,
+      history: (image.history || ["Image Input"]).concat([title]),
+      stats: {
+        ...(image.stats || {}),
+        randomStrokePalette: options.palette || "Pop",
+        randomColorOpacity: Math.round(opacity * 100)
+      }
+    };
+  }
+
   function randomSize(data, options = {}, seed = 0) {
     if (!data) return null;
     let min = Number(options.min || 45) / 100;
@@ -3357,6 +3519,109 @@
         labelColor: colorMode
       }
     };
+  }
+
+  function sliceLabels(sliceSet, arrayData, options = {}, seed = 0) {
+    if (!isType(sliceSet, "TileSet") && !isType(sliceSet, "CellSet")) return null;
+    const slices = sliceRects(sliceSet);
+    if (!slices.length) return null;
+
+    const mapping = options.mapping || "Skip Spaces";
+    const baseText = String(options.text || "POISON GIRL FRIENDS");
+    const values = sliceLabelValues(baseText, arrayData, mapping, slices);
+    const opacity = clamp(Number(options.opacity || 96) / 100);
+    const baseColor = resolveColor(options.color, "#20231f", opacity);
+    const fit = options.fit || "Fit Tile";
+    const manualSize = Math.max(2, Number(options.size || 120));
+    const padding = Math.max(0, Number(options.padding || 18));
+    const font = options.font || "Mononoki";
+    const offsetX = Number(options.offsetX || 0);
+    const offsetY = Number(options.offsetY || 0);
+    const rotation = Number(options.rotation || 0);
+    const uniformSize = fit === "Uniform"
+      ? Math.max(2, Math.min(manualSize, ...slices.map((slice) => fittedSliceLabelSize(slice, padding, manualSize))))
+      : manualSize;
+    const labels = [];
+
+    slices.forEach((slice, index) => {
+      const text = values[index];
+      if (text === undefined || text === null || text === "") return;
+      const size = fit === "Fit Tile"
+        ? fittedSliceLabelSize(slice, padding, manualSize)
+        : fit === "Uniform"
+          ? uniformSize
+          : manualSize;
+      labels.push({
+        x: slice.x + slice.w / 2 + offsetX,
+        y: slice.y + slice.h / 2 + offsetY,
+        text,
+        size,
+        align: "center",
+        font,
+        weight: 800,
+        rotation,
+        color: layerLabelColor(index, options.colorMode || "Input", baseColor.color, options, seed + 877),
+        a: (options.colorMode || "Input") === "Input" ? baseColor.opacity : opacity,
+        sliceIndex: slice.index,
+        sourceIndex: slice.sourceIndex,
+        row: slice.row,
+        col: slice.col
+      });
+    });
+
+    return {
+      ngType: "LayerSet",
+      label: `${sliceSet.label || sliceSet.ngType} / Slice Labels`,
+      layers: [{ data: sliceSet, opacity: 1 }],
+      overlayLabels: labels,
+      history: (sliceSet.history || [sliceSet.label || sliceSet.ngType]).concat([`Slice Labels(${labels.length})`]),
+      stats: {
+        ...(sliceSet.stats || {}),
+        labels: labels.length,
+        labelMapping: mapping,
+        labelFit: fit
+      }
+    };
+  }
+
+  function sliceRects(sliceSet) {
+    const items = isType(sliceSet, "TileSet") ? sliceSet.tiles || [] : sliceSet.cells || [];
+    return items
+      .map((item, fallbackIndex) => ({
+        x: Number(item.x || 0),
+        y: Number(item.y || 0),
+        w: Math.max(1, Number(item.w || 1)),
+        h: Math.max(1, Number(item.h || 1)),
+        index: item.index ?? fallbackIndex,
+        sourceIndex: item.sourceIndex ?? item.index ?? fallbackIndex,
+        row: item.row ?? 0,
+        col: item.col ?? fallbackIndex
+      }))
+      .sort((a, b) => (a.row - b.row) || (a.col - b.col) || (a.index - b.index));
+  }
+
+  function sliceLabelValues(text, arrayData, mapping, slices) {
+    if (mapping === "Array Values" && isType(arrayData, "Array") && arrayData.values?.length) {
+      return slices.map((_, index) => String(arrayData.values[index % arrayData.values.length]));
+    }
+    if (mapping === "Index") return slices.map((slice) => String(slice.index));
+    if (mapping === "Rows From Spaces") {
+      const rows = text.trim().split(/\s+/).filter(Boolean);
+      return slices.map((slice) => {
+        const rowText = rows[slice.row] || "";
+        return rowText[slice.col] || "";
+      });
+    }
+    const characters = mapping === "Keep Spaces"
+      ? Array.from(text)
+      : Array.from(text).filter((char) => !/\s/.test(char));
+    return slices.map((_, index) => characters[index] || "");
+  }
+
+  function fittedSliceLabelSize(slice, padding, maxSize) {
+    const usableW = Math.max(1, slice.w - padding * 2);
+    const usableH = Math.max(1, slice.h - padding * 2);
+    return Math.max(2, Math.min(maxSize, usableW * 0.72, usableH * 0.78));
   }
 
   function layerLabelColor(index, mode, fallback, options, seed) {
@@ -3650,6 +3915,12 @@
     if (isType(input, "LayerSet")) {
       return mapLayerSet(input, (layerData, index) => dither(layerData, options, seed + index * 43), "Dither");
     }
+    if (isType(input, "TileSet")) {
+      const baked = tileSetToImage(input, options);
+      return baked ? ditherImage(baked, options, seed) : null;
+    }
+    if (isType(input, "Image")) return ditherImage(input, options, seed);
+
     const amount = Number(options.amount || 48);
     const candidates = candidatesForDither(input);
     const count = Math.min(1600, Math.max(120, Math.round(amount * 16)));
@@ -3680,6 +3951,132 @@
         density: Math.round(amount)
       }
     };
+  }
+
+  function ditherImage(image, options = {}, seed = 0) {
+    if (!isType(image, "Image") || !image.pixels?.length || !image.cols || !image.rows) return image || null;
+    const mode = options.mode || "Bayer";
+    const threshold = clamp(Number(options.threshold ?? 50) / 100);
+    const scale = Math.max(1, Math.round(Number(options.scale || 2)));
+    const mix = clamp(Number(options.mix ?? 100) / 100);
+    const key = [
+      "dither",
+      image.cols,
+      image.rows,
+      pixelFingerprint(image.pixels),
+      mode,
+      Math.round(threshold * 100),
+      scale,
+      Math.round(mix * 100),
+      seed
+    ].join(":");
+    const cached = rasterDataUrlCache.get(key);
+    if (cached) return ditheredImageResult(image, cached, mode, options, key);
+
+    const output = mode === "Floyd Steinberg"
+      ? floydSteinbergDither(image, threshold, mix)
+      : orderedImageDither(image, { mode, threshold, scale, mix, seed });
+    const pixels = Array.from(output);
+    cacheSetLimited(rasterDataUrlCache, key, pixels);
+    return ditheredImageResult(image, pixels, mode, options, key);
+  }
+
+  function ditheredImageResult(image, pixels, mode, options, key) {
+    return {
+      ...image,
+      dataUrl: null,
+      pixels,
+      rasterKey: `dither:${key}`,
+      label: `${image.label || "Image"} / Dither`,
+      history: (image.history || ["Image Input"]).concat([`Dither(${mode})`]),
+      stats: {
+        ...(image.stats || {}),
+        dither: mode,
+        threshold: Math.round(Number(options.threshold ?? 50)),
+        scale: Math.round(Number(options.scale || 2)),
+        mix: Math.round(Number(options.mix ?? 100))
+      }
+    };
+  }
+
+  function orderedImageDither(image, options) {
+    const output = new Uint8ClampedArray(image.cols * image.rows * 4);
+    const matrix = bayer4();
+    const mode = options.mode || "Bayer";
+    const threshold = options.threshold;
+    const mix = options.mix;
+    const scale = Math.max(1, options.scale || 1);
+
+    for (let y = 0; y < image.rows; y += 1) {
+      for (let x = 0; x < image.cols; x += 1) {
+        const offset = (y * image.cols + x) * 4;
+        const r = image.pixels[offset] || 0;
+        const g = image.pixels[offset + 1] || 0;
+        const b = image.pixels[offset + 2] || 0;
+        const a = image.pixels[offset + 3] ?? 255;
+        const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+        const pattern = mode === "Halftone"
+          ? halftoneThreshold(x, y, scale)
+          : matrix[Math.floor(y / scale) % 4][Math.floor(x / scale) % 4];
+        const level = luma + (pattern - 0.5) * 0.36;
+        const bit = level >= threshold ? 255 : 0;
+        output[offset] = Math.round(lerp(r, bit, mix));
+        output[offset + 1] = Math.round(lerp(g, bit, mix));
+        output[offset + 2] = Math.round(lerp(b, bit, mix));
+        output[offset + 3] = a;
+      }
+    }
+    return output;
+  }
+
+  function floydSteinbergDither(image, threshold, mix) {
+    const values = new Float32Array(image.cols * image.rows);
+    for (let index = 0; index < image.cols * image.rows; index += 1) {
+      const offset = index * 4;
+      values[index] = ((image.pixels[offset] || 0) * 0.2126 + (image.pixels[offset + 1] || 0) * 0.7152 + (image.pixels[offset + 2] || 0) * 0.0722) / 255;
+    }
+    const output = new Uint8ClampedArray(image.cols * image.rows * 4);
+    for (let y = 0; y < image.rows; y += 1) {
+      for (let x = 0; x < image.cols; x += 1) {
+        const index = y * image.cols + x;
+        const oldValue = values[index];
+        const nextValue = oldValue >= threshold ? 1 : 0;
+        const error = oldValue - nextValue;
+        diffuseDitherError(values, image.cols, image.rows, x + 1, y, error * 7 / 16);
+        diffuseDitherError(values, image.cols, image.rows, x - 1, y + 1, error * 3 / 16);
+        diffuseDitherError(values, image.cols, image.rows, x, y + 1, error * 5 / 16);
+        diffuseDitherError(values, image.cols, image.rows, x + 1, y + 1, error * 1 / 16);
+        const offset = index * 4;
+        const bit = nextValue * 255;
+        output[offset] = Math.round(lerp(image.pixels[offset] || 0, bit, mix));
+        output[offset + 1] = Math.round(lerp(image.pixels[offset + 1] || 0, bit, mix));
+        output[offset + 2] = Math.round(lerp(image.pixels[offset + 2] || 0, bit, mix));
+        output[offset + 3] = image.pixels[offset + 3] ?? 255;
+      }
+    }
+    return output;
+  }
+
+  function diffuseDitherError(values, cols, rows, x, y, error) {
+    if (x < 0 || y < 0 || x >= cols || y >= rows) return;
+    const index = y * cols + x;
+    values[index] = clamp(values[index] + error);
+  }
+
+  function bayer4() {
+    return [
+      [0 / 16, 8 / 16, 2 / 16, 10 / 16],
+      [12 / 16, 4 / 16, 14 / 16, 6 / 16],
+      [3 / 16, 11 / 16, 1 / 16, 9 / 16],
+      [15 / 16, 7 / 16, 13 / 16, 5 / 16]
+    ];
+  }
+
+  function halftoneThreshold(x, y, scale) {
+    const cell = Math.max(2, scale * 2);
+    const cx = ((x % cell) + 0.5) / cell - 0.5;
+    const cy = ((y % cell) + 0.5) / cell - 0.5;
+    return clamp(Math.hypot(cx, cy) * 1.8);
   }
 
   function candidatesForDither(input) {
@@ -3721,26 +4118,29 @@
     const y = options.y || 0;
     const width = options.width || WIDTH;
     const height = options.height || HEIGHT;
-    const scale = Math.min(width / WIDTH, height / HEIGHT);
-    const offsetX = x + (width - WIDTH * scale) / 2;
-    const offsetY = y + (height - HEIGHT * scale) / 2;
+    const artboard = resolveArtboard(data, options);
+    const artboardWidth = Math.max(1, artboard.maxX - artboard.minX);
+    const artboardHeight = Math.max(1, artboard.maxY - artboard.minY);
+    const scale = Math.min(width / artboardWidth, height / artboardHeight);
+    const paperWidth = artboardWidth * scale;
+    const paperHeight = artboardHeight * scale;
+    const offsetX = x + (width - paperWidth) / 2;
+    const offsetY = y + (height - paperHeight) / 2;
 
     ctx.save();
     ctx.clearRect(x, y, width, height);
-    if (data && !isType(data, "Value") && usesContentFrame(data)) {
-      drawContentFrame(ctx, data, x, y, width, height, options);
-      ctx.restore();
-      return;
-    }
-    drawPaper(ctx, x, y, width, height, options);
-    ctx.translate(offsetX, offsetY);
+    drawPaper(ctx, offsetX, offsetY, paperWidth, paperHeight, options);
+    ctx.beginPath();
+    ctx.rect(offsetX, offsetY, paperWidth, paperHeight);
+    ctx.clip();
+    ctx.translate(offsetX - artboard.minX * scale, offsetY - artboard.minY * scale);
     ctx.scale(scale, scale);
     if (!data) {
-      drawEmpty(ctx);
+      drawEmpty(ctx, artboard);
     } else if (isType(data, "Value")) {
       drawValue(ctx, data);
     } else {
-      const fit = contentFit(data);
+      const fit = options.fit === "Fit Content" ? contentFit(data, artboard) : { x: 0, y: 0, scale: 1 };
       ctx.save();
       ctx.translate(fit.x, fit.y);
       ctx.scale(fit.scale, fit.scale);
@@ -3840,12 +4240,15 @@
     ctx.restore();
   }
 
-  function drawEmpty(ctx) {
+  function drawEmpty(ctx, artboard = defaultArtboard()) {
+    const centerX = (artboard.minX + artboard.maxX) / 2;
+    const centerY = (artboard.minY + artboard.maxY) / 2;
     ctx.fillStyle = "rgba(32, 35, 31, 0.55)";
     ctx.font = `700 30px ${UI_FONT}`;
-    ctx.fillText("Connect typed geometry", 92, 130);
+    ctx.textAlign = "center";
+    ctx.fillText("Connect typed geometry", centerX, centerY - 18);
     ctx.font = `18px ${UI_FONT}`;
-    ctx.fillText("Preview accepts Image, Shape, PointSet, Field, TraceSet, Artifact, or LayerSet.", 92, 164);
+    ctx.fillText("Preview accepts Image, Shape, PointSet, Field, TraceSet, Artifact, or LayerSet.", centerX, centerY + 22);
   }
 
   function drawValue(ctx, data) {
@@ -3983,12 +4386,18 @@
         const sy = clamp(Number(tile.sy || 0), 0, Math.max(0, (image?.rows || sourceHeight) - 1));
         const sw = Math.max(1, Math.min(Number(tile.sw || 1), (image?.cols || sourceWidth) - sx));
         const sh = Math.max(1, Math.min(Number(tile.sh || 1), (image?.rows || sourceHeight) - sy));
+        const hasTint = tile.tintColor && Number(tile.tintAmount || 0) > 0;
+        const drawTarget = hasTint ? tintedTileCanvas(source, sourceScaleX, sourceScaleY, { ...tile, sx, sy, sw, sh }) : source;
+        const drawSx = hasTint ? 0 : sx * sourceScaleX;
+        const drawSy = hasTint ? 0 : sy * sourceScaleY;
+        const drawSw = hasTint ? Math.max(1, Math.round(sw * sourceScaleX)) : sw * sourceScaleX;
+        const drawSh = hasTint ? Math.max(1, Math.round(sh * sourceScaleY)) : sh * sourceScaleY;
         ctx.drawImage(
-          source,
-          sx * sourceScaleX,
-          sy * sourceScaleY,
-          sw * sourceScaleX,
-          sh * sourceScaleY,
+          drawTarget,
+          drawSx,
+          drawSy,
+          drawSw,
+          drawSh,
           tile.x,
           tile.y,
           tile.w,
@@ -4003,6 +4412,29 @@
     ctx.restore();
   }
 
+  function tintedTileCanvas(source, sourceScaleX, sourceScaleY, tile) {
+    const sx = Math.max(0, Number(tile.sx || 0) * sourceScaleX);
+    const sy = Math.max(0, Number(tile.sy || 0) * sourceScaleY);
+    const sw = Math.max(1, Math.round(Number(tile.sw || 1) * sourceScaleX));
+    const sh = Math.max(1, Math.round(Number(tile.sh || 1) * sourceScaleY));
+    const canvas = document.createElement("canvas");
+    canvas.width = sw;
+    canvas.height = sh;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(source, sx, sy, sw, sh, 0, 0, sw, sh);
+    const imageData = ctx.getImageData(0, 0, sw, sh);
+    const color = hexToRgbUnit(tile.tintColor || "#ffffff");
+    const amount = clamp(Number(tile.tintAmount || 0));
+    for (let offset = 0; offset < imageData.data.length; offset += 4) {
+      imageData.data[offset] = Math.round(lerp(imageData.data[offset], color.r * 255, amount));
+      imageData.data[offset + 1] = Math.round(lerp(imageData.data[offset + 1], color.g * 255, amount));
+      imageData.data[offset + 2] = Math.round(lerp(imageData.data[offset + 2], color.b * 255, amount));
+    }
+    ctx.putImageData(imageData, 0, 0);
+    return canvas;
+  }
+
+
   function drawCellSet(ctx, cellSet) {
     if (!cellSet?.cells?.length) return;
     ctx.save();
@@ -4010,7 +4442,7 @@
       if (!cell.paths?.length) return;
       ctx.save();
       ctx.globalAlpha = cell.opacity ?? 1;
-      drawPaths(ctx, cell.paths, cellSet.style || "cells", cellSet.stroke);
+      drawPaths(ctx, cell.paths, cellSet.style || "cells", cell.stroke || cellSet.stroke);
       ctx.restore();
     });
     ctx.restore();
@@ -4086,26 +4518,33 @@
   function drawLabels(ctx, labels) {
     ctx.save();
     labels.forEach((label) => {
+      ctx.save();
       ctx.globalAlpha = label.a ?? 0.8;
       ctx.fillStyle = label.color || "#20231f";
-      ctx.font = `700 ${label.size || 9}px ${UI_FONT}`;
+      ctx.font = `${label.weight || 700} ${label.size || 9}px ${label.font ? cssFontFamily(label.font, "ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace") : UI_FONT}`;
       ctx.textAlign = label.align || "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(String(label.text || ""), label.x, label.y);
+      ctx.translate(label.x, label.y);
+      if (label.rotation) ctx.rotate((Number(label.rotation) * Math.PI) / 180);
+      ctx.fillText(String(label.text || ""), 0, 0);
+      ctx.restore();
     });
     ctx.restore();
   }
 
   function toSvg(data, options = {}) {
     const background = options.background || "Paper";
+    const artboard = resolveArtboard(data, options);
+    const artboardWidth = Math.max(1, artboard.maxX - artboard.minX);
+    const artboardHeight = Math.max(1, artboard.maxY - artboard.minY);
     const parts = [
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${WIDTH} ${HEIGHT}" width="${WIDTH}" height="${HEIGHT}">`,
-      background === "Transparent" ? "" : `<rect width="${WIDTH}" height="${HEIGHT}" fill="${backgroundColor(background, options.backgroundColor || options.background_color)}"/>`,
-      options.grid === "Off" ? "" : svgGrid()
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${round(artboard.minX)} ${round(artboard.minY)} ${round(artboardWidth)} ${round(artboardHeight)}" width="${round(artboardWidth)}" height="${round(artboardHeight)}">`,
+      background === "Transparent" ? "" : `<rect x="${round(artboard.minX)}" y="${round(artboard.minY)}" width="${round(artboardWidth)}" height="${round(artboardHeight)}" fill="${backgroundColor(background, options.backgroundColor || options.background_color)}"/>`,
+      options.grid === "Off" ? "" : svgGrid(artboard)
     ];
 
     if (data && !isType(data, "Value")) {
-      const fit = contentFit(data);
+      const fit = options.fit === "Fit Content" ? contentFit(data, artboard) : { x: 0, y: 0, scale: 1 };
       parts.push(`<g transform="translate(${round(fit.x)} ${round(fit.y)}) scale(${round(fit.scale)})">${svgContent(data)}</g>`);
     } else {
       parts.push(svgContent(data));
@@ -4151,10 +4590,12 @@
     return "";
   }
 
-  function svgGrid() {
+  function svgGrid(artboard = defaultArtboard()) {
     const lines = [];
-    for (let x = 60; x < WIDTH; x += 40) lines.push(`<path d="M${x} 0V${HEIGHT}" stroke="#456c7c" stroke-opacity="0.08"/>`);
-    for (let y = 40; y < HEIGHT; y += 40) lines.push(`<path d="M0 ${y}H${WIDTH}" stroke="#456c7c" stroke-opacity="0.08"/>`);
+    const startX = Math.ceil(artboard.minX / 40) * 40;
+    const startY = Math.ceil(artboard.minY / 40) * 40;
+    for (let x = startX; x < artboard.maxX; x += 40) lines.push(`<path d="M${round(x)} ${round(artboard.minY)}V${round(artboard.maxY)}" stroke="#456c7c" stroke-opacity="0.08"/>`);
+    for (let y = startY; y < artboard.maxY; y += 40) lines.push(`<path d="M${round(artboard.minX)} ${round(y)}H${round(artboard.maxX)}" stroke="#456c7c" stroke-opacity="0.08"/>`);
     return `<g>${lines.join("")}</g>`;
   }
 
@@ -4202,7 +4643,7 @@
   function svgCellSet(cellSet) {
     return (cellSet.cells || []).map((cell) => {
       const opacity = cell.opacity ?? 1;
-      return `<g opacity="${round(opacity)}">${(cell.paths || []).map((path, index) => svgPath(path, cellSet.style || "cells", index, cellSet.stroke)).join("")}</g>`;
+      return `<g opacity="${round(opacity)}">${(cell.paths || []).map((path, index) => svgPath(path, cellSet.style || "cells", index, cell.stroke || cellSet.stroke)).join("")}</g>`;
     }).join("");
   }
 
@@ -4242,7 +4683,10 @@
 
   function svgLabel(label) {
     const anchor = label.align === "left" ? "start" : label.align === "right" ? "end" : "middle";
-    return `<text x="${round(label.x)}" y="${round(label.y)}" text-anchor="${anchor}" dominant-baseline="middle" font-family="Mononoki, ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace" font-size="${round(label.size || 9)}" font-weight="700" fill="${label.color || "#20231f"}" opacity="${round(label.a ?? 0.8)}">${escapeText(label.text || "")}</text>`;
+    const rotation = Number(label.rotation || 0);
+    const transform = rotation ? ` transform="rotate(${round(rotation)} ${round(label.x)} ${round(label.y)})"` : "";
+    const fontFamily = label.font ? cssFontFamily(label.font, "ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace") : "Mononoki, ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace";
+    return `<text x="${round(label.x)}" y="${round(label.y)}"${transform} text-anchor="${anchor}" dominant-baseline="middle" font-family="${escapeAttr(fontFamily)}" font-size="${round(label.size || 9)}" font-weight="${label.weight || 700}" fill="${label.color || "#20231f"}" opacity="${round(label.a ?? 0.8)}">${escapeText(label.text || "")}</text>`;
   }
 
   function sourceGhost(shape) {
@@ -4644,20 +5088,76 @@
     ]);
   }
 
-  function contentFit(data) {
+  function contentFit(data, artboard = defaultArtboard()) {
     const bounds = contentBounds(data);
     const margin = 70;
     const width = Math.max(1, bounds.maxX - bounds.minX);
     const height = Math.max(1, bounds.maxY - bounds.minY);
-    const inside = bounds.minX >= 0 && bounds.minY >= 0 && bounds.maxX <= WIDTH && bounds.maxY <= HEIGHT;
+    const artboardWidth = Math.max(1, artboard.maxX - artboard.minX);
+    const artboardHeight = Math.max(1, artboard.maxY - artboard.minY);
+    const inside = bounds.minX >= artboard.minX && bounds.minY >= artboard.minY && bounds.maxX <= artboard.maxX && bounds.maxY <= artboard.maxY;
     if (inside) return { x: 0, y: 0, scale: 1 };
-    const scale = Math.min((WIDTH - margin * 2) / width, (HEIGHT - margin * 2) / height, 1);
+    const scale = Math.min(Math.max(1, artboardWidth - margin * 2) / width, Math.max(1, artboardHeight - margin * 2) / height, 1);
     const center = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
+    const artboardCenter = { x: (artboard.minX + artboard.maxX) / 2, y: (artboard.minY + artboard.maxY) / 2 };
     return {
-      x: CX - center.x * scale,
-      y: CY - center.y * scale,
+      x: artboardCenter.x - center.x * scale,
+      y: artboardCenter.y - center.y * scale,
       scale
     };
+  }
+
+  function resolveArtboard(data, options = {}) {
+    if ((options.canvasSize || options.canvas_size) === "From Image") {
+      const bounds = firstImageBounds(data) || contentBounds(data);
+      if (bounds) return bounds;
+    }
+    const preset = options.canvasSize || options.canvas_size || "Default";
+    const presetSizes = {
+      Default: [WIDTH, HEIGHT],
+      Square: [1080, 1080],
+      "16:9": [1920, 1080],
+      "4:5": [1080, 1350]
+    };
+    const [presetWidth, presetHeight] = presetSizes[preset] || [
+      Number(options.artboardWidth || options.width || WIDTH),
+      Number(options.artboardHeight || options.height || HEIGHT)
+    ];
+    const artboardWidth = Math.max(1, Number(preset === "Custom" ? options.artboardWidth || options.width : presetWidth) || WIDTH);
+    const artboardHeight = Math.max(1, Number(preset === "Custom" ? options.artboardHeight || options.height : presetHeight) || HEIGHT);
+    return {
+      minX: CX - artboardWidth / 2,
+      minY: CY - artboardHeight / 2,
+      maxX: CX + artboardWidth / 2,
+      maxY: CY + artboardHeight / 2
+    };
+  }
+
+  function defaultArtboard() {
+    return { minX: 0, minY: 0, maxX: WIDTH, maxY: HEIGHT };
+  }
+
+  function firstImageBounds(data) {
+    const image = firstImageData(data);
+    if (!image) return null;
+    return {
+      minX: Number(image.originX ?? 0),
+      minY: Number(image.originY ?? 0),
+      maxX: Number(image.originX ?? 0) + Number(image.width || WIDTH),
+      maxY: Number(image.originY ?? 0) + Number(image.height || HEIGHT)
+    };
+  }
+
+  function firstImageData(data) {
+    if (!data) return null;
+    if (isType(data, "Image")) return data;
+    if (isType(data, "LayerSet")) {
+      for (const layer of data.layers || []) {
+        const image = firstImageData(layer.data);
+        if (image) return image;
+      }
+    }
+    return null;
   }
 
   function usesContentFrame(data) {
@@ -4999,9 +5499,13 @@
     return current;
   }
 
-  function curvePath(path, tension) {
+  function curvePath(path, tension, sag = 0, pathIndex = 0) {
     if (!path || path.length < 3) return path || [];
-    const bend = 1 - tension;
+    const looseness = 1 - tension;
+    const bend = 0.18 + looseness * 1.65;
+    const sagAmount = Number(sag || 0) / 100;
+    const bounds = boundsFromPoints(path);
+    const span = Math.max(1, bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
     const output = [{ ...path[0] }];
     for (let index = 0; index < path.length - 1; index += 1) {
       const p0 = path[Math.max(0, index - 1)];
@@ -5012,9 +5516,12 @@
         const t = step / 5;
         const t2 = t * t;
         const t3 = t2 * t;
+        const localSag = Math.sin(t * Math.PI) * sagAmount * span * 0.075;
+        const lengthSag = Math.sin(((index + t) / Math.max(1, path.length - 1)) * Math.PI) * sagAmount * span * 0.055;
+        const wobble = looseness * sagAmount * (noise(pathIndex + 919, index * 17 + step) - 0.5) * span * 0.025;
         output.push({
           x: catmullRom(p0.x, p1.x, p2.x, p3.x, t, t2, t3, bend),
-          y: catmullRom(p0.y, p1.y, p2.y, p3.y, t, t2, t3, bend)
+          y: catmullRom(p0.y, p1.y, p2.y, p3.y, t, t2, t3, bend) + localSag + lengthSag + wobble
         });
       }
     }
@@ -6120,7 +6627,12 @@
       Survey: ["#536b57", "#456c7c", "#9b6048", "#20231f", "#7d8d82"],
       Warm: ["#9b6048", "#b06f55", "#75684d", "#c2a66b", "#20231f"],
       Cool: ["#456c7c", "#5f7f8d", "#536b57", "#7d8d82", "#20231f"],
-      Ink: ["#20231f", "#3f4640", "#536b57", "#456c7c"]
+      Ink: ["#20231f", "#3f4640", "#536b57", "#456c7c"],
+      Pop: ["#ff2d55", "#ffcc00", "#00c7ff", "#34c759", "#5856d6", "#ff9500"],
+      Neon: ["#ff00a8", "#00f5ff", "#c6ff00", "#ff7a00", "#7b2cff", "#00ff85"],
+      Riso: ["#ff4b5c", "#00a6a6", "#ffcf33", "#4257ff", "#ff6f3c", "#111111"],
+      Candy: ["#ff5ebc", "#58d5ff", "#ffe45e", "#8cff66", "#b875ff", "#ff8a65"],
+      Signal: ["#e60012", "#0057ff", "#ffd400", "#00a651", "#ff7f00", "#111111"]
     };
     if (name === "Random") {
       return Array.from({ length: 7 }, (_, index) => randomPaletteColor(seed, index + 1));
@@ -6130,9 +6642,13 @@
 
   function randomPaletteColor(seed, offset) {
     const hue = Math.round(noise(seed + 17, offset * 101 + 3) * 360);
-    const saturation = 28 + Math.round(noise(seed + 23, offset * 67 + 9) * 36);
-    const lightness = 26 + Math.round(noise(seed + 31, offset * 53 + 11) * 26);
+    const saturation = 62 + Math.round(noise(seed + 23, offset * 67 + 9) * 34);
+    const lightness = 38 + Math.round(noise(seed + 31, offset * 53 + 11) * 24);
     return hslToHex(hue, saturation, lightness);
+  }
+
+  function solidColor(name) {
+    return PALETTE[name] || null;
   }
 
   function hslToHex(h, s, l) {
@@ -6345,6 +6861,7 @@
     randomSize,
     pointLabels,
     layerLabels,
+    sliceLabels,
     layerStack,
     draw,
     toSvg

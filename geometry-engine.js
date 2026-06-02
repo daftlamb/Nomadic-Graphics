@@ -296,15 +296,10 @@
   function createRectangleShape(options) {
     const width = Number(options.width || 560);
     const height = Number(options.height || 320);
+    const cornerRadius = clamp(Number(options.cornerRadius || 0), 0, Math.min(width, height) / 2);
     const x0 = CX - width / 2;
     const y0 = CY - height / 2;
-    const vertices = [
-      { x: x0, y: y0 },
-      { x: x0 + width, y: y0 },
-      { x: x0 + width, y: y0 + height },
-      { x: x0, y: y0 + height }
-    ];
-    const contour = sampleClosedPolyline(vertices, 6).map((pt) => {
+    const contour = roundedRectangleContour(x0, y0, width, height, cornerRadius).map((pt) => {
       const normal = normalize(pt.x - CX, pt.y - CY);
       return point(pt.x, pt.y, normal.x, normal.y, "boundary");
     });
@@ -312,6 +307,7 @@
 
     for (let y = y0; y <= y0 + height; y += 8) {
       for (let x = x0; x <= x0 + width; x += 8) {
+        if (!pointInRoundedRect(x, y, x0, y0, width, height, cornerRadius)) continue;
         const normal = normalize(x - CX, y - CY);
         fill.push(point(x, y, normal.x, normal.y, "interior"));
       }
@@ -323,6 +319,7 @@
       label: "Rectangle",
       width,
       height,
+      cornerRadius,
       showBody: options.body !== "Hide",
       bounds: { minX: x0, minY: y0, maxX: x0 + width, maxY: y0 + height },
       fill,
@@ -332,6 +329,7 @@
       stats: {
         width: Math.round(width),
         height: Math.round(height),
+        cornerRadius: Math.round(cornerRadius),
         boundary: contour.length,
         fill: fill.length
       }
@@ -554,6 +552,474 @@
     };
   }
 
+  function gridSliceImage(image, options = {}, seed = 0) {
+    if (!isType(image, "Image") || !image.cols || !image.rows) return null;
+    const columns = Math.max(1, Math.round(Number(options.columns || 8)));
+    const rows = Math.max(1, Math.round(Number(options.rows || 6)));
+    const mode = options.mode || "Regular";
+    const gap = Math.max(0, Number(options.gap || 0));
+    const cropPadding = Math.max(0, Number(options.cropPadding || 0));
+    const jitter = Math.max(0, Number(options.jitter || 0));
+    const localSeed = seed + Number(options.seed || 0) * 1009;
+    const xBreaks = tileGridBreaks(columns, mode, localSeed + 11);
+    const yBreaks = tileGridBreaks(rows, mode, localSeed + 17);
+    const tiles = [];
+
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < columns; col += 1) {
+        const index = row * columns + col;
+        const left = xBreaks[col];
+        const right = xBreaks[col + 1];
+        const top = yBreaks[row];
+        const bottom = yBreaks[row + 1];
+        const sourceW = Math.max(1, (right - left) * image.cols);
+        const sourceH = Math.max(1, (bottom - top) * image.rows);
+        const crop = Math.min(cropPadding, sourceW * 0.38, sourceH * 0.38);
+        const cellX = image.originX + left * image.width;
+        const cellY = image.originY + top * image.height;
+        const cellW = (right - left) * image.width;
+        const cellH = (bottom - top) * image.height;
+        const tileGapX = Math.min(gap, Math.max(0, cellW - 2));
+        const tileGapY = Math.min(gap, Math.max(0, cellH - 2));
+        const jitterX = jitter ? (noise(localSeed + 31, index * 41 + 3) - 0.5) * jitter : 0;
+        const jitterY = jitter ? (noise(localSeed + 37, index * 43 + 7) - 0.5) * jitter : 0;
+
+        tiles.push({
+          sx: left * image.cols + crop,
+          sy: top * image.rows + crop,
+          sw: Math.max(1, sourceW - crop * 2),
+          sh: Math.max(1, sourceH - crop * 2),
+          x: cellX + tileGapX / 2 + jitterX,
+          y: cellY + tileGapY / 2 + jitterY,
+          w: Math.max(1, cellW - tileGapX),
+          h: Math.max(1, cellH - tileGapY),
+          index,
+          row,
+          col,
+          sourceIndex: index,
+          sourceRow: row,
+          sourceCol: col,
+          opacity: image.opacity ?? 1,
+          pixelMode: "Smooth"
+        });
+      }
+    }
+
+    return {
+      ngType: "TileSet",
+      label: `${image.label || "Image"} / Grid Slice`,
+      image,
+      tiles,
+      bounds: tileSetBounds(tiles),
+      history: (image.history || ["Image Input"]).concat([`Grid Slice(${columns}x${rows})`]),
+      stats: {
+        tiles: tiles.length,
+        columns,
+        rows,
+        mode,
+        gap: Math.round(gap),
+        jitter: Math.round(jitter)
+      }
+    };
+  }
+
+  function shuffleTiles(tileSet, options = {}, seed = 0) {
+    if (!isType(tileSet, "TileSet")) return null;
+    const tiles = tileSet.tiles || [];
+    const amount = clamp(Number(options.amount ?? 100) / 100);
+    const mode = options.mode || "Random";
+    const localSeed = seed + Number(options.seed || 0) * 1009;
+    const order = tileShuffleOrder(tiles, mode, amount, localSeed);
+    const outputTiles = tiles.map((tile, index) => {
+      const useShuffle = noise(localSeed + 59, index * 67 + 13) <= amount;
+      const source = useShuffle ? tiles[order[index] ?? index] || tile : tile;
+      return {
+        ...tile,
+        sx: source.sx,
+        sy: source.sy,
+        sw: source.sw,
+        sh: source.sh,
+        sourceIndex: source.sourceIndex ?? source.index,
+        sourceRow: source.sourceRow ?? source.row,
+        sourceCol: source.sourceCol ?? source.col
+      };
+    });
+
+    return {
+      ...tileSet,
+      label: `${tileSet.label || "TileSet"} / Shuffle Tiles`,
+      tiles: outputTiles,
+      bounds: tileSetBounds(outputTiles),
+      history: (tileSet.history || ["TileSet"]).concat([`Shuffle Tiles(${mode})`]),
+      stats: {
+        ...(tileSet.stats || {}),
+        shuffle: mode,
+        amount: Math.round(amount * 100)
+      }
+    };
+  }
+
+  function stretchTiles(tileSet, options = {}, seed = 0) {
+    if (!isType(tileSet, "TileSet")) return null;
+    const amount = Math.max(0, Number(options.amount || 120)) / 100;
+    const chance = clamp(Number(options.chance ?? 42) / 100);
+    const axisMode = options.axis || "Horizontal";
+    const anchor = options.anchor || "Center";
+    const pixelMode = options.pixelMode || "Smear";
+    const localSeed = seed + Number(options.seed || 0) * 1009;
+    const tiles = (tileSet.tiles || []).map((tile, index) => {
+      if (noise(localSeed + 71, index * 83 + 19) > chance) return { ...tile };
+      const axis = axisMode === "Mixed"
+        ? (noise(localSeed + 73, index * 89 + 23) > 0.5 ? "Vertical" : "Horizontal")
+        : axisMode;
+      const factor = 1 + amount * (0.35 + noise(localSeed + 79, index * 97 + 29) * 1.15);
+      const next = { ...tile, pixelMode };
+
+      if (axis === "Vertical") {
+        const nextH = tile.h * factor;
+        next.y += anchorOffset(tile.h, nextH, anchor);
+        next.h = nextH;
+        if (pixelMode === "Smear") {
+          const strip = Math.max(1, tile.sh * (0.035 + noise(localSeed + 83, index) * 0.12));
+          next.sy += smearSourceOffset(tile.sh, strip, anchor, noise(localSeed + 89, index));
+          next.sh = strip;
+        }
+      } else {
+        const nextW = tile.w * factor;
+        next.x += anchorOffset(tile.w, nextW, anchor);
+        next.w = nextW;
+        if (pixelMode === "Smear") {
+          const strip = Math.max(1, tile.sw * (0.035 + noise(localSeed + 91, index) * 0.12));
+          next.sx += smearSourceOffset(tile.sw, strip, anchor, noise(localSeed + 97, index));
+          next.sw = strip;
+        }
+      }
+      return next;
+    });
+
+    return {
+      ...tileSet,
+      label: `${tileSet.label || "TileSet"} / Stretch Tiles`,
+      tiles,
+      bounds: tileSetBounds(tiles),
+      history: (tileSet.history || ["TileSet"]).concat([`Stretch Tiles(${axisMode})`]),
+      stats: {
+        ...(tileSet.stats || {}),
+        stretch: axisMode,
+        chance: Math.round(chance * 100),
+        amount: Math.round(amount * 100),
+        pixelMode
+      }
+    };
+  }
+
+  function traceSlice(traceSet, options = {}, seed = 0) {
+    if (!isType(traceSet, "TraceSet")) return null;
+    const columns = Math.max(1, Math.round(Number(options.columns || 8)));
+    const rows = Math.max(1, Math.round(Number(options.rows || 6)));
+    const mode = options.mode || "Regular";
+    const gap = Math.max(0, Number(options.gap || 0));
+    const clipPadding = Math.max(0, Number(options.clipPadding || 0));
+    const jitter = Math.max(0, Number(options.jitter || 0));
+    const localSeed = seed + Number(options.seed || 0) * 1009;
+    const baseBounds = padBounds(boundsFromPaths(traceSet.paths || []), 2);
+    const width = Math.max(1, baseBounds.maxX - baseBounds.minX);
+    const height = Math.max(1, baseBounds.maxY - baseBounds.minY);
+    const xBreaks = tileGridBreaks(columns, mode, localSeed + 131);
+    const yBreaks = tileGridBreaks(rows, mode, localSeed + 137);
+    const cells = [];
+
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < columns; col += 1) {
+        const index = row * columns + col;
+        const left = xBreaks[col];
+        const right = xBreaks[col + 1];
+        const top = yBreaks[row];
+        const bottom = yBreaks[row + 1];
+        const source = {
+          x: baseBounds.minX + left * width,
+          y: baseBounds.minY + top * height,
+          w: (right - left) * width,
+          h: (bottom - top) * height
+        };
+        const clip = insetRect(source, Math.min(clipPadding, source.w * 0.42, source.h * 0.42));
+        const targetGapX = Math.min(gap, Math.max(0, source.w - 2));
+        const targetGapY = Math.min(gap, Math.max(0, source.h - 2));
+        const target = {
+          x: source.x + targetGapX / 2 + (jitter ? (noise(localSeed + 149, index * 41 + 3) - 0.5) * jitter : 0),
+          y: source.y + targetGapY / 2 + (jitter ? (noise(localSeed + 151, index * 43 + 7) - 0.5) * jitter : 0),
+          w: Math.max(1, source.w - targetGapX),
+          h: Math.max(1, source.h - targetGapY)
+        };
+        const clipped = clipTracePathsToRect(traceSet.paths || [], clip);
+        cells.push({
+          ...target,
+          paths: mapPathsBetweenRects(clipped, clip, target),
+          sourceRect: source,
+          index,
+          row,
+          col,
+          sourceIndex: index,
+          sourceRow: row,
+          sourceCol: col,
+          opacity: 1
+        });
+      }
+    }
+
+    return {
+      ngType: "CellSet",
+      label: `${traceSet.label || "TraceSet"} / Trace Slice`,
+      cells,
+      style: traceSet.style || "cell",
+      stroke: traceSet.stroke || null,
+      bounds: cellSetBounds(cells),
+      history: (traceSet.history || ["TraceSet"]).concat([`Trace Slice(${columns}x${rows})`]),
+      stats: {
+        cells: cells.length,
+        columns,
+        rows,
+        mode,
+        paths: cells.reduce((sum, cell) => sum + (cell.paths || []).length, 0)
+      }
+    };
+  }
+
+  function shuffleCells(cellSet, options = {}, seed = 0) {
+    if (!isType(cellSet, "CellSet")) return null;
+    const cells = cellSet.cells || [];
+    const amount = clamp(Number(options.amount ?? 100) / 100);
+    const mode = options.mode || "Random";
+    const localSeed = seed + Number(options.seed || 0) * 1009;
+    const order = tileShuffleOrder(cells, mode, amount, localSeed + 163);
+    const outputCells = cells.map((cell, index) => {
+      const useShuffle = noise(localSeed + 167, index * 67 + 13) <= amount;
+      const source = useShuffle ? cells[order[index] ?? index] || cell : cell;
+      const target = rectFromCell(cell);
+      return {
+        ...cell,
+        paths: mapPathsBetweenRects(source.paths || [], rectFromCell(source), target),
+        sourceIndex: source.sourceIndex ?? source.index,
+        sourceRow: source.sourceRow ?? source.row,
+        sourceCol: source.sourceCol ?? source.col
+      };
+    });
+
+    return {
+      ...cellSet,
+      label: `${cellSet.label || "CellSet"} / Shuffle Cells`,
+      cells: outputCells,
+      bounds: cellSetBounds(outputCells),
+      history: (cellSet.history || ["CellSet"]).concat([`Shuffle Cells(${mode})`]),
+      stats: {
+        ...(cellSet.stats || {}),
+        shuffle: mode,
+        amount: Math.round(amount * 100),
+        paths: outputCells.reduce((sum, cell) => sum + (cell.paths || []).length, 0)
+      }
+    };
+  }
+
+  function stretchCells(cellSet, options = {}, seed = 0) {
+    if (!isType(cellSet, "CellSet")) return null;
+    const amount = Math.max(0, Number(options.amount || 120)) / 100;
+    const chance = clamp(Number(options.chance ?? 42) / 100);
+    const axisMode = options.axis || "Horizontal";
+    const anchor = options.anchor || "Center";
+    const localSeed = seed + Number(options.seed || 0) * 1009;
+    const cells = (cellSet.cells || []).map((cell, index) => {
+      if (noise(localSeed + 173, index * 83 + 19) > chance) return { ...cell, paths: (cell.paths || []).map(clonePath) };
+      const axis = axisMode === "Mixed"
+        ? (noise(localSeed + 179, index * 89 + 23) > 0.5 ? "Vertical" : "Horizontal")
+        : axisMode;
+      const source = rectFromCell(cell);
+      const factor = 1 + amount * (0.35 + noise(localSeed + 181, index * 97 + 29) * 1.15);
+      const target = { ...source };
+      if (axis === "Vertical") {
+        target.h = source.h * factor;
+        target.y += anchorOffset(source.h, target.h, anchor);
+      } else {
+        target.w = source.w * factor;
+        target.x += anchorOffset(source.w, target.w, anchor);
+      }
+      return {
+        ...cell,
+        ...target,
+        paths: mapPathsBetweenRects(cell.paths || [], source, target)
+      };
+    });
+
+    return {
+      ...cellSet,
+      label: `${cellSet.label || "CellSet"} / Stretch Cells`,
+      cells,
+      bounds: cellSetBounds(cells),
+      history: (cellSet.history || ["CellSet"]).concat([`Stretch Cells(${axisMode})`]),
+      stats: {
+        ...(cellSet.stats || {}),
+        stretch: axisMode,
+        chance: Math.round(chance * 100),
+        amount: Math.round(amount * 100),
+        paths: cells.reduce((sum, cell) => sum + (cell.paths || []).length, 0)
+      }
+    };
+  }
+
+  function cellsToTraceSet(cellSet) {
+    if (!isType(cellSet, "CellSet")) return null;
+    const paths = cellSetPaths(cellSet);
+    return {
+      ngType: "TraceSet",
+      label: `${cellSet.label || "CellSet"} / TraceSet`,
+      sourceShape: null,
+      paths,
+      style: cellSet.style || "cells",
+      stroke: cellSet.stroke || null,
+      history: (cellSet.history || ["CellSet"]).concat(["Cells To TraceSet"]),
+      stats: {
+        cells: (cellSet.cells || []).length,
+        paths: paths.length
+      }
+    };
+  }
+
+  function tileGridBreaks(count, mode, seed) {
+    if (mode === "Regular") return Array.from({ length: count + 1 }, (_, index) => index / count);
+    const minStep = 0.18 / count;
+    const strength = mode === "Uneven" ? 0.62 : 0.34;
+    const breaks = [0];
+    for (let index = 1; index < count; index += 1) {
+      const base = index / count;
+      const drift = (noise(seed, index * 53 + 5) - 0.5) * strength / count;
+      breaks.push(clamp(base + drift, minStep, 1 - minStep));
+    }
+    breaks.push(1);
+    breaks.sort((a, b) => a - b);
+    for (let index = 1; index < breaks.length - 1; index += 1) {
+      const remaining = breaks.length - 1 - index;
+      breaks[index] = clamp(breaks[index], breaks[index - 1] + minStep, 1 - remaining * minStep);
+    }
+    return breaks;
+  }
+
+  function tileShuffleOrder(tiles, mode, amount, seed) {
+    const order = tiles.map((_, index) => index);
+    if (mode === "Reverse") return order.reverse();
+    if (mode === "Noise Sort") {
+      return order.sort((a, b) => noise(seed + 101, a * 37) - noise(seed + 101, b * 37));
+    }
+    if (mode === "Row Drift") return tileDriftOrder(tiles, "row", amount, seed);
+    if (mode === "Column Drift") return tileDriftOrder(tiles, "col", amount, seed);
+    for (let index = order.length - 1; index > 0; index -= 1) {
+      const swap = Math.floor(noise(seed + 103, index * 47) * (index + 1));
+      [order[index], order[swap]] = [order[swap], order[index]];
+    }
+    return order;
+  }
+
+  function tileDriftOrder(tiles, axis, amount, seed) {
+    const order = tiles.map((_, index) => index);
+    const groups = new Map();
+    tiles.forEach((tile, index) => {
+      const key = axis === "row" ? tile.row : tile.col;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(index);
+    });
+    groups.forEach((indices, key) => {
+      const maxShift = Math.max(1, Math.round(indices.length * amount));
+      const shift = Math.round((noise(seed + 107, key * 61 + 3) - 0.5) * maxShift * 2);
+      indices.forEach((index, localIndex) => {
+        const sourceIndex = indices[(localIndex + shift + indices.length * 4) % indices.length];
+        order[index] = sourceIndex;
+      });
+    });
+    return order;
+  }
+
+  function anchorOffset(size, nextSize, anchor) {
+    if (anchor === "Left") return 0;
+    if (anchor === "Right") return size - nextSize;
+    return (size - nextSize) / 2;
+  }
+
+  function smearSourceOffset(size, strip, anchor, randomValue) {
+    if (anchor === "Left") return 0;
+    if (anchor === "Right") return size - strip;
+    return (size - strip) * randomValue;
+  }
+
+  function clipTracePathsToRect(paths, rect) {
+    const output = [];
+    (paths || []).forEach((path) => {
+      let current = [];
+      for (let index = 0; index < path.length - 1; index += 1) {
+        const clipped = clipSegmentToRect(path[index], path[index + 1], rect);
+        if (!clipped) {
+          if (current.length > 1) output.push(current);
+          current = [];
+          continue;
+        }
+        const [a, b] = clipped;
+        if (!current.length || pointDistance(current[current.length - 1], a) > 0.65) {
+          if (current.length > 1) output.push(current);
+          current = [a, b];
+        } else {
+          current.push(b);
+        }
+      }
+      if (current.length > 1) output.push(current);
+    });
+    return output;
+  }
+
+  function clipSegmentToRect(a, b, rect) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    let u1 = 0;
+    let u2 = 1;
+    const p = [-dx, dx, -dy, dy];
+    const q = [a.x - rect.x, rect.x + rect.w - a.x, a.y - rect.y, rect.y + rect.h - a.y];
+
+    for (let index = 0; index < 4; index += 1) {
+      if (Math.abs(p[index]) < 0.000001) {
+        if (q[index] < 0) return null;
+      } else {
+        const u = q[index] / p[index];
+        if (p[index] < 0) u1 = Math.max(u1, u);
+        else u2 = Math.min(u2, u);
+        if (u1 > u2) return null;
+      }
+    }
+    return [
+      interpolateTracePoint(a, b, u1),
+      interpolateTracePoint(a, b, u2)
+    ];
+  }
+
+  function interpolateTracePoint(a, b, t) {
+    return {
+      ...a,
+      x: lerp(a.x, b.x, t),
+      y: lerp(a.y, b.y, t),
+      nx: lerp(a.nx || 0, b.nx || 0, t),
+      ny: lerp(a.ny || 0, b.ny || 0, t)
+    };
+  }
+
+  function mapPathsBetweenRects(paths, sourceRect, targetRect) {
+    const sx = Math.max(0.0001, sourceRect.w);
+    const sy = Math.max(0.0001, sourceRect.h);
+    return (paths || []).map((path) => path.map((pt) => ({
+      ...pt,
+      x: targetRect.x + ((pt.x - sourceRect.x) / sx) * targetRect.w,
+      y: targetRect.y + ((pt.y - sourceRect.y) / sy) * targetRect.h
+    })));
+  }
+
+  function pointDistance(a, b) {
+    return Math.hypot((a?.x || 0) - (b?.x || 0), (a?.y || 0) - (b?.y || 0));
+  }
+
   function resampleImageForField(image, maxSide) {
     if (!image?.pixels?.length || !image.cols || !image.rows) return { pixels: [], cols: 0, rows: 0 };
     const aspect = image.cols / Math.max(1, image.rows);
@@ -579,6 +1045,10 @@
   }
 
   function imageWeathering(image, options = {}, seed = 0) {
+    if (isType(image, "TileSet")) {
+      const baked = tileSetToImage(image, options);
+      return baked ? imageWeathering(baked, options, seed) : image;
+    }
     if (!isType(image, "Image") || !image.pixels?.length || !image.cols || !image.rows) return image || null;
 
     const mode = options.mode || "Photocopy";
@@ -974,6 +1444,8 @@
   function visualFingerprint(data) {
     if (!data) return "empty";
     if (isType(data, "Image")) return `image:${data.cols}x${data.rows}:${pixelFingerprint(data.pixels)}:${data.scale || 100}`;
+    if (isType(data, "TileSet")) return tileSetFingerprint(data);
+    if (isType(data, "CellSet")) return cellSetFingerprint(data);
     if (isType(data, "LayerSet")) {
       return `layers:${(data.layers || []).map((layer) => `${round(layer.opacity ?? 1)}:${visualFingerprint(layer.data)}`).join("|")}`;
     }
@@ -1272,6 +1744,7 @@
     const path = new paperScope.Path({ insert: false });
     pathPoints.forEach((pt) => path.add(new paperScope.Point(pt.x, pt.y)));
     path.closed = closed;
+    if (closed) path.fillColor = "#000";
     path.flatten(4);
     return path;
   }
@@ -1956,72 +2429,102 @@
     const step = Math.max(5, Math.round(18 - detail * 0.13));
     const circleResult = circleBooleanShape(a, b, mode, step);
     if (circleResult) return circleResult;
+    const rasterMask = booleanRasterMask(a, b, mode);
+    const rasterBounds = booleanSampleBounds(a, b, mode, step);
+    const rasterFill = sampleFillFromRasterMask(rasterMask, rasterBounds, 8);
     const paperResult = paperBooleanShape(a, b, mode, step);
-    if (paperResult) return withBooleanRasterMask(paperResult, a, b, mode);
+    if (paperResult) return withBooleanRasterMask(paperResult, a, b, mode, rasterMask, rasterFill, rasterBounds);
 
-    const bounds = booleanSampleBounds(a, b, mode, step);
-    const testA = shapeTester(a, step);
-    const testB = shapeTester(b, step);
-    const fill = [];
-    const values = [];
-    const width = Math.max(step, bounds.maxX - bounds.minX);
-    const height = Math.max(step, bounds.maxY - bounds.minY);
-    const cols = Math.max(3, Math.ceil(width / step) + 1);
-    const rows = Math.max(3, Math.ceil(height / step) + 1);
+    return rasterBooleanShape(a, b, mode, rasterMask, rasterFill, rasterBounds, step);
+  }
 
-    for (let row = 0; row < rows; row += 1) {
-      for (let col = 0; col < cols; col += 1) {
-        const x = bounds.minX + (col / (cols - 1)) * width;
-        const y = bounds.minY + (row / (rows - 1)) * height;
-        const inside = booleanModeIncludes(mode, testA(x, y), testB(x, y));
-        values.push(inside ? 1 : 0);
-        if (!inside) continue;
-        const normal = normalize(x - CX, y - CY);
-        fill.push(point(x, y, normal.x, normal.y, "interior"));
+  function withBooleanRasterMask(shape, a, b, mode, rasterMask = null, rasterFill = null, rasterBounds = null) {
+    const mask = rasterMask || booleanRasterMask(a, b, mode);
+    if (!mask) return shape;
+    const bounds = rasterBounds || shape.bounds || booleanSampleBounds(a, b, mode, 8);
+    const fill = rasterFill || sampleFillFromRasterMask(mask, bounds, 8);
+    return {
+      ...shape,
+      rasterMask: mask,
+      fill,
+      bounds: fill.length ? boundsFromPoints(fill) : shape.bounds || bounds,
+      boundary: fill.length ? shape.boundary : [],
+      contours: fill.length ? shape.contours : [],
+      stats: {
+        ...(shape.stats || {}),
+        cells: fill.length,
+        mask: "Raster"
       }
-    }
+    };
+  }
 
-    const booleanField = {
-      ngType: "Field",
-      label: `${a.label} / ${mode} ${b.label}`,
+  function tileSetToImage(tileSet, options = {}) {
+    if (!isType(tileSet, "TileSet") || !tileSet.tiles?.length || typeof document === "undefined") return null;
+    const bounds = padBounds(tileSetBounds(tileSet.tiles), 2);
+    const width = Math.max(1, bounds.maxX - bounds.minX);
+    const height = Math.max(1, bounds.maxY - bounds.minY);
+    const maxSide = Math.max(260, Number(options.rasterMaxSide || 900));
+    const renderScale = Math.min(1, maxSide / Math.max(width, height));
+    const cols = Math.max(1, Math.round(width * renderScale));
+    const rows = Math.max(1, Math.round(height * renderScale));
+    const canvas = document.createElement("canvas");
+    canvas.width = cols;
+    canvas.height = rows;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.clearRect(0, 0, cols, rows);
+    ctx.save();
+    ctx.scale(renderScale, renderScale);
+    ctx.translate(-bounds.minX, -bounds.minY);
+    drawTileSet(ctx, tileSet);
+    ctx.restore();
+    const pixels = Array.from(ctx.getImageData(0, 0, cols, rows).data);
+
+    return {
+      ngType: "Image",
+      label: `${tileSet.label || "TileSet"} / Rasterized`,
+      dataUrl: null,
+      pixels,
       cols,
       rows,
-      originX: bounds.minX,
-      originY: bounds.minY,
+      originalWidth: cols,
+      originalHeight: rows,
       width,
       height,
-      values,
-      history: (a.history || [a.label]).concat([`${mode} ${b.label}`])
+      originX: bounds.minX,
+      originY: bounds.minY,
+      opacity: tileSet.opacity ?? 1,
+      blendMode: tileSet.blendMode || "Normal",
+      rasterKey: `tiles-baked:${tileSetFingerprint(tileSet)}:${round(width)}x${round(height)}:${round(renderScale)}`,
+      history: (tileSet.history || ["TileSet"]).concat(["Rasterize Tiles"]),
+      stats: {
+        ...(tileSet.stats || {}),
+        source: "TileSet",
+        rasterized: `${cols}x${rows}`
+      }
     };
-    const contours = traceFieldAtThreshold(booleanField, 0.5).map(closePath);
-    const boundary = decimate(contours.flat(), 2600);
-    const shapeBounds = fill.length ? boundsFromPoints(fill) : bounds;
+  }
 
+  function rasterBooleanShape(a, b, mode, rasterMask, fill, bounds, step) {
     return {
       ngType: "Shape",
       kind: "boolean",
       label: `${a.label} / ${mode} / ${b.label}`,
       showBody: true,
-      bounds: shapeBounds,
+      bounds: fill.length ? boundsFromPoints(fill) : bounds,
       fill,
-      boundary,
-      contours,
+      boundary: [],
+      contours: [],
+      rasterMask,
       sampledBoolean: true,
       shapeStyle: booleanShapeStyle(),
       history: (a.history || [a.label]).concat([`${mode} ${b.label}`]),
       stats: {
         operation: mode,
         cells: fill.length,
-        detail: Math.round(detail),
-        step
+        step,
+        boolean: "Raster mask"
       }
     };
-  }
-
-  function withBooleanRasterMask(shape, a, b, mode) {
-    if (a.kind !== "text" && b.kind !== "text") return shape;
-    const rasterMask = booleanRasterMask(a, b, mode);
-    return rasterMask ? { ...shape, rasterMask } : shape;
   }
 
   function booleanRasterMask(a, b, mode) {
@@ -2057,7 +2560,9 @@
     if (!shape) return;
     ctx.save();
     ctx.fillStyle = "#20231f";
-    if (shape.kind === "text") {
+    if (shape.rasterMask) {
+      ctx.drawImage(shape.rasterMask, 0, 0, WIDTH, HEIGHT);
+    } else if (shape.kind === "text") {
       ctx.font = `800 ${shape.layout.size}px ${cssFontFamily(shape.layout.font)}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -2078,6 +2583,30 @@
       ctx.fill(shape.fillRule === "evenodd" ? "evenodd" : "nonzero");
     }
     ctx.restore();
+  }
+
+  function sampleFillFromRasterMask(maskCanvas, bounds, spacing) {
+    if (!maskCanvas || !bounds) return [];
+    const ctx = maskCanvas.getContext("2d", { willReadFrequently: true });
+    const image = ctx.getImageData(0, 0, WIDTH, HEIGHT).data;
+    const fill = [];
+    const minX = clamp(Math.floor(bounds.minX), 0, WIDTH - 1);
+    const minY = clamp(Math.floor(bounds.minY), 0, HEIGHT - 1);
+    const maxX = clamp(Math.ceil(bounds.maxX), 0, WIDTH - 1);
+    const maxY = clamp(Math.ceil(bounds.maxY), 0, HEIGHT - 1);
+
+    for (let y = minY; y <= maxY; y += spacing) {
+      for (let x = minX; x <= maxX; x += spacing) {
+        const px = clamp(Math.round(x), 0, WIDTH - 1);
+        const py = clamp(Math.round(y), 0, HEIGHT - 1);
+        const alpha = image[(py * WIDTH + px) * 4 + 3] || 0;
+        if (alpha < 24) continue;
+        const normal = normalize(x - CX, y - CY);
+        fill.push(point(x, y, normal.x, normal.y, "interior"));
+      }
+    }
+
+    return fill;
   }
 
   function circleBooleanShape(a, b, mode, step) {
@@ -2183,6 +2712,33 @@
   }
 
   function paperShapeItem(shape) {
+    let primitive = null;
+    if (shape.kind === "circle" && Number(shape.radius) > 0) {
+      primitive = new paperScope.Path.Circle({
+        center: new paperScope.Point(CX, CY),
+        radius: Number(shape.radius),
+        insert: false
+      });
+    } else if (shape.kind === "rectangle" && shape.bounds && !shape.cornerRadius) {
+      primitive = new paperScope.Path.Rectangle({
+        rectangle: new paperScope.Rectangle(
+          shape.bounds.minX,
+          shape.bounds.minY,
+          shape.bounds.maxX - shape.bounds.minX,
+          shape.bounds.maxY - shape.bounds.minY
+        ),
+        insert: false
+      });
+    } else if (shape.kind === "polygon" && Number(shape.sides) >= 3 && Number(shape.radius) > 0) {
+      primitive = makePaperPath(polygonContour(shape.sides, shape.radius), true);
+    }
+
+    if (primitive) {
+      primitive.closed = true;
+      primitive.fillColor = "#000";
+      return primitive;
+    }
+
     const contours = (shape.contours || []).filter((path) => path.length > 2);
     if (!contours.length) return null;
     if (contours.length === 1) return makePaperPath(contours[0], true);
@@ -2528,13 +3084,22 @@
 
     if (isType(input, "LayerSet")) {
       const layers = (input.layers || []).map((layer, index) => ({
+        ...layer,
         data: randomStrokeColor(layer.data, options, seed + index * 47) || layer.data,
         opacity: layer.opacity
+      }));
+      const overlayLabels = (input.overlayLabels || []).map((label, index) => ({
+        ...label,
+        ...(colorStroke ? {
+          color: colorForRandomStroke(index, options, seed + 109),
+          a: opacity
+        } : {})
       }));
       return {
         ...input,
         label: `${input.label || "Layer Set"} / Random Color`,
         layers,
+        overlayLabels,
         history: (input.history || [input.label || "Layer Set"]).concat([title]),
         stats: {
           ...(input.stats || {}),
@@ -2684,6 +3249,7 @@
         ...data,
         label: `${data.label || "Layer Set"} / Random Size`,
         layers,
+        overlayLabels: data.overlayLabels || [],
         history: (data.history || ["Layer Set"]).concat(["Random Size"]),
         stats: {
           ...(data.stats || {}),
@@ -2743,6 +3309,66 @@
         array: values ? arrayData.label || "Array" : "Index"
       }
     };
+  }
+
+  function layerLabels(layerSet, arrayData, options = {}, seed = 0) {
+    if (!isType(layerSet, "LayerSet")) return null;
+    const align = options.align || "Center";
+    const alignValue = align === "Left" ? "left" : align === "Right" ? "right" : "center";
+    const size = Math.max(2, Number(options.size || 18));
+    const padding = Number(options.padding || 0);
+    const opacity = clamp(Number(options.opacity || 90) / 100);
+    const baseColor = resolveColor(options.color, "#20231f", opacity);
+    const values = isType(arrayData, "Array") && arrayData.values?.length ? arrayData.values : null;
+    const colorMode = options.colorMode || "Input";
+    const labels = [];
+
+    (layerSet.layers || []).forEach((layer, index) => {
+      const bounds = contentBounds(layer.data);
+      if (!bounds) return;
+      const text = values ? values[index % values.length] : String(index).padStart(3, "0");
+      const color = layerLabelColor(index, colorMode, baseColor.color, options, seed);
+      const x = align === "Left"
+        ? bounds.minX + padding
+        : align === "Right"
+          ? bounds.maxX - padding
+          : (bounds.minX + bounds.maxX) / 2;
+      labels.push({
+        x,
+        y: (bounds.minY + bounds.maxY) / 2,
+        text,
+        size,
+        align: alignValue,
+        color,
+        a: colorMode === "Input" ? baseColor.opacity : opacity
+      });
+    });
+
+    return {
+      ngType: "LayerSet",
+      label: `${layerSet.label || "Layer Set"} / Layer Labels`,
+      layers: layerSet.layers || [],
+      overlayLabels: labels,
+      history: (layerSet.history || ["Layer Set"]).concat(values ? arrayData.history || ["Array"] : ["Index"], ["Layer Labels"]),
+      stats: {
+        ...(layerSet.stats || {}),
+        labels: labels.length,
+        labelAlign: align,
+        labelColor: colorMode
+      }
+    };
+  }
+
+  function layerLabelColor(index, mode, fallback, options, seed) {
+    if (mode === "Random") {
+      return colorForRandomStroke(index, {
+        palette: options.palette || "Survey",
+        variation: 100,
+        seed: options.seed || 0
+      }, seed + 613);
+    }
+    if (mode === "Input") return fallback;
+    return PALETTE[mode] || fallback;
   }
 
   function sineWave(data, options = {}) {
@@ -2819,9 +3445,15 @@
         const opacity = clamp(1 - fade * (distance / maxDistance), 0.05, 1);
         const jitterX = jitter ? (noise(seed + 5, index * 37 + 3) - 0.5) * jitter : 0;
         const jitterY = jitter ? (noise(seed + 9, index * 41 + 7) - 0.5) * jitter : 0;
+        const copyData = transformData(data, (col - midCol) * stepX + jitterX, (row - midRow) * stepY + jitterY, scale);
+        const bounds = contentBounds(copyData);
         layers.push({
-          data: transformData(data, (col - midCol) * stepX + jitterX, (row - midRow) * stepY + jitterY, scale),
-          opacity
+          data: copyData,
+          opacity,
+          index,
+          row,
+          col,
+          center: bounds ? { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 } : null
         });
       }
     }
@@ -2867,10 +3499,7 @@
 
   function flattenLayers(layerSet) {
     if (!isType(layerSet, "LayerSet")) return null;
-    const parts = emptyArtifactParts();
-    (layerSet.layers || []).forEach((layer, index) => {
-      mergeArtifactParts(parts, artifactPartsFromData(layer.data, layer.opacity ?? 1, index));
-    });
+    const parts = artifactPartsFromData(layerSet);
     return {
       ngType: "Artifact",
       label: `${layerSet.label || "Layer Set"} / Flatten Layers`,
@@ -3151,8 +3780,13 @@
         drawContent(ctx, layer.data);
         ctx.restore();
       });
+      drawLabels(ctx, data.overlayLabels || []);
     } else if (isType(data, "Image")) {
       drawImageLayer(ctx, data);
+    } else if (isType(data, "TileSet")) {
+      drawTileSet(ctx, data);
+    } else if (isType(data, "CellSet")) {
+      drawCellSet(ctx, data);
     } else if (isType(data, "Shape")) {
       drawShape(ctx, data, 0.82);
     } else if (isType(data, "PointSet")) {
@@ -3327,6 +3961,61 @@
     ctx.restore();
   }
 
+  function drawTileSet(ctx, tileSet) {
+    if (!tileSet?.tiles?.length) return;
+    const image = tileSet.image;
+    const source = rasterCanvasFromPixels(image) || cachedRasterImage(image?.dataUrl);
+    const ready = source && ((source.complete && source.naturalWidth) || source.width);
+    const sourceWidth = source?.naturalWidth || source?.width || image?.cols || 1;
+    const sourceHeight = source?.naturalHeight || source?.height || image?.rows || 1;
+    const sourceScaleX = sourceWidth / Math.max(1, image?.cols || sourceWidth);
+    const sourceScaleY = sourceHeight / Math.max(1, image?.rows || sourceHeight);
+
+    ctx.save();
+    ctx.globalCompositeOperation = canvasBlendMode(tileSet.blendMode);
+    (tileSet.tiles || []).forEach((tile, index) => {
+      ctx.save();
+      ctx.globalAlpha = (tile.opacity ?? 1) * (tileSet.opacity ?? 1);
+      ctx.imageSmoothingEnabled = tile.pixelMode === "Smooth";
+      if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = tile.pixelMode === "Smooth" ? "high" : "low";
+      if (ready) {
+        const sx = clamp(Number(tile.sx || 0), 0, Math.max(0, (image?.cols || sourceWidth) - 1));
+        const sy = clamp(Number(tile.sy || 0), 0, Math.max(0, (image?.rows || sourceHeight) - 1));
+        const sw = Math.max(1, Math.min(Number(tile.sw || 1), (image?.cols || sourceWidth) - sx));
+        const sh = Math.max(1, Math.min(Number(tile.sh || 1), (image?.rows || sourceHeight) - sy));
+        ctx.drawImage(
+          source,
+          sx * sourceScaleX,
+          sy * sourceScaleY,
+          sw * sourceScaleX,
+          sh * sourceScaleY,
+          tile.x,
+          tile.y,
+          tile.w,
+          tile.h
+        );
+      } else {
+        ctx.fillStyle = index % 2 ? "rgba(69, 108, 124, 0.16)" : "rgba(83, 107, 87, 0.16)";
+        ctx.fillRect(tile.x, tile.y, tile.w, tile.h);
+      }
+      ctx.restore();
+    });
+    ctx.restore();
+  }
+
+  function drawCellSet(ctx, cellSet) {
+    if (!cellSet?.cells?.length) return;
+    ctx.save();
+    (cellSet.cells || []).forEach((cell) => {
+      if (!cell.paths?.length) return;
+      ctx.save();
+      ctx.globalAlpha = cell.opacity ?? 1;
+      drawPaths(ctx, cell.paths, cellSet.style || "cells", cellSet.stroke);
+      ctx.restore();
+    });
+    ctx.restore();
+  }
+
   function drawField(ctx, field) {
     ctx.save();
     const originX = fieldOriginX(field);
@@ -3400,7 +4089,7 @@
       ctx.globalAlpha = label.a ?? 0.8;
       ctx.fillStyle = label.color || "#20231f";
       ctx.font = `700 ${label.size || 9}px ${UI_FONT}`;
-      ctx.textAlign = "center";
+      ctx.textAlign = label.align || "center";
       ctx.textBaseline = "middle";
       ctx.fillText(String(label.text || ""), label.x, label.y);
     });
@@ -3428,9 +4117,14 @@
   function svgContent(data) {
     if (!data) return "";
     if (isType(data, "LayerSet")) {
-      return data.layers.map((layer) => `<g opacity="${round(layer.opacity)}"${svgBlendAttr(layer.blendMode || layer.data?.blendMode)}>${svgContent(layer.data)}</g>`).join("");
+      return [
+        ...data.layers.map((layer) => `<g opacity="${round(layer.opacity)}"${svgBlendAttr(layer.blendMode || layer.data?.blendMode)}>${svgContent(layer.data)}</g>`),
+        ...(data.overlayLabels || []).map(svgLabel)
+      ].join("");
     }
     if (isType(data, "Image")) return svgImage(data);
+    if (isType(data, "TileSet")) return svgTileSet(data);
+    if (isType(data, "CellSet")) return svgCellSet(data);
     if (isType(data, "Shape")) return svgShape(data, 0.72);
     if (isType(data, "PointSet")) {
       return [
@@ -3451,7 +4145,7 @@
         svgFills(data.fills || []),
         ...(data.paths || []).map((path, i) => svgPath(path, "scanline", i, data.stroke)),
         ...(data.marks || []).map((m, i) => `<circle cx="${round(m.x)}" cy="${round(m.y)}" r="${round(m.r)}" fill="${m.color || (i % 9 === 0 ? "#9b6048" : i % 5 === 0 ? "#456c7c" : "#20231f")}" opacity="${round(m.a)}"/>`),
-        ...(data.labels || []).map((label) => `<text x="${round(label.x)}" y="${round(label.y)}" text-anchor="middle" dominant-baseline="middle" font-family="Mononoki, ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace" font-size="${round(label.size || 9)}" font-weight="700" fill="${label.color || "#20231f"}" opacity="${round(label.a ?? 0.8)}">${escapeText(label.text || "")}</text>`)
+        ...(data.labels || []).map(svgLabel)
       ].join("");
     }
     return "";
@@ -3466,6 +4160,9 @@
 
   function svgShape(shape, opacity) {
     if (!shape || shape.showBody === false) return "";
+    if (shape.rasterMask) {
+      return `<image href="${escapeAttr(shape.rasterMask.toDataURL("image/png"))}" x="0" y="0" width="${WIDTH}" height="${HEIGHT}" opacity="${round(shapeFillOpacity(shape, opacity))}" preserveAspectRatio="none"/>`;
+    }
     const strokeOpacity = round(shapeStrokeOpacity(shape, opacity));
     const fillColor = shapeFillColor(shape);
     const fillOpacity = round(shapeFillOpacity(shape, opacity));
@@ -3494,6 +4191,19 @@
     const href = image?.dataUrl || rasterDataUrlFromPixels(image);
     if (!href) return "";
     return `<image href="${escapeAttr(href)}" x="${round(image.originX)}" y="${round(image.originY)}" width="${round(image.width)}" height="${round(image.height)}" opacity="${round(image.opacity ?? 1)}"${svgBlendAttr(image.blendMode)} preserveAspectRatio="none"/>`;
+  }
+
+  function svgTileSet(tileSet) {
+    const rendered = tileSetRasterDataUrl(tileSet);
+    if (!rendered?.href) return "";
+    return `<image href="${escapeAttr(rendered.href)}" x="${round(rendered.bounds.minX)}" y="${round(rendered.bounds.minY)}" width="${round(rendered.width)}" height="${round(rendered.height)}" opacity="${round(tileSet.opacity ?? 1)}"${svgBlendAttr(tileSet.blendMode)} preserveAspectRatio="none"/>`;
+  }
+
+  function svgCellSet(cellSet) {
+    return (cellSet.cells || []).map((cell) => {
+      const opacity = cell.opacity ?? 1;
+      return `<g opacity="${round(opacity)}">${(cell.paths || []).map((path, index) => svgPath(path, cellSet.style || "cells", index, cellSet.stroke)).join("")}</g>`;
+    }).join("");
   }
 
   function svgField(field) {
@@ -3528,6 +4238,11 @@
     const opacity = strokeOpacityForPath(stroke, style, index);
     const width = strokeWidthForPath(stroke, style, index);
     return `<path d="${d}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" opacity="${opacity}"/>`;
+  }
+
+  function svgLabel(label) {
+    const anchor = label.align === "left" ? "start" : label.align === "right" ? "end" : "middle";
+    return `<text x="${round(label.x)}" y="${round(label.y)}" text-anchor="${anchor}" dominant-baseline="middle" font-family="Mononoki, ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace" font-size="${round(label.size || 9)}" font-weight="700" fill="${label.color || "#20231f"}" opacity="${round(label.a ?? 0.8)}">${escapeText(label.text || "")}</text>`;
   }
 
   function sourceGhost(shape) {
@@ -3565,6 +4280,7 @@
         bounds: shape.bounds,
         width: shape.width,
         height: shape.height,
+        cornerRadius: shape.cornerRadius,
         radius: shape.radius,
         sides: shape.sides,
         contours: shape.contours || []
@@ -3794,6 +4510,47 @@
     return points;
   }
 
+  function roundedRectangleContour(x, y, width, height, radius) {
+    const r = clamp(radius, 0, Math.min(width, height) / 2);
+    if (r <= 0.5) {
+      return sampleClosedPolyline([
+        { x, y },
+        { x: x + width, y },
+        { x: x + width, y: y + height },
+        { x, y: y + height }
+      ], 6);
+    }
+
+    const steps = Math.max(4, Math.round(r / 8));
+    const corners = [
+      { cx: x + width - r, cy: y + r, start: -Math.PI / 2, end: 0 },
+      { cx: x + width - r, cy: y + height - r, start: 0, end: Math.PI / 2 },
+      { cx: x + r, cy: y + height - r, start: Math.PI / 2, end: Math.PI },
+      { cx: x + r, cy: y + r, start: Math.PI, end: Math.PI * 1.5 }
+    ];
+    const points = [];
+    corners.forEach((corner) => {
+      for (let step = 0; step <= steps; step += 1) {
+        const t = step / steps;
+        const angle = lerp(corner.start, corner.end, t);
+        points.push({
+          x: corner.cx + Math.cos(angle) * r,
+          y: corner.cy + Math.sin(angle) * r
+        });
+      }
+    });
+    return points;
+  }
+
+  function pointInRoundedRect(px, py, x, y, width, height, radius) {
+    if (px < x || px > x + width || py < y || py > y + height) return false;
+    const r = clamp(radius, 0, Math.min(width, height) / 2);
+    if (r <= 0.5) return true;
+    const cx = clamp(px, x + r, x + width - r);
+    const cy = clamp(py, y + r, y + height - r);
+    return Math.hypot(px - cx, py - cy) <= r;
+  }
+
   function closePath(path) {
     if (!path.length) return [];
     const first = path[0];
@@ -3811,6 +4568,14 @@
       if (intersects) inside = !inside;
     }
     return inside;
+  }
+
+  function pointInContours(pt, contours, fillRule = "evenodd") {
+    let hits = 0;
+    contours.forEach((contour) => {
+      if (pointInPolygon(pt, contour)) hits += 1;
+    });
+    return fillRule === "evenodd" ? hits % 2 === 1 : hits > 0;
   }
 
   function pathArea(path) {
@@ -3831,6 +4596,42 @@
       minY: Math.min(...points.map((pt) => pt.y)),
       maxX: Math.max(...points.map((pt) => pt.x)),
       maxY: Math.max(...points.map((pt) => pt.y))
+    };
+  }
+
+  function tileSetBounds(tiles) {
+    return unionBounds((tiles || []).map((tile) => ({
+      minX: Number(tile.x || 0),
+      minY: Number(tile.y || 0),
+      maxX: Number(tile.x || 0) + Number(tile.w || 0),
+      maxY: Number(tile.y || 0) + Number(tile.h || 0)
+    })));
+  }
+
+  function cellSetBounds(cells) {
+    return unionBounds((cells || []).map((cell) => ({
+      minX: Number(cell.x || 0),
+      minY: Number(cell.y || 0),
+      maxX: Number(cell.x || 0) + Number(cell.w || 0),
+      maxY: Number(cell.y || 0) + Number(cell.h || 0)
+    })));
+  }
+
+  function rectFromCell(cell) {
+    return {
+      x: Number(cell.x || 0),
+      y: Number(cell.y || 0),
+      w: Math.max(1, Number(cell.w || 1)),
+      h: Math.max(1, Number(cell.h || 1))
+    };
+  }
+
+  function insetRect(rect, amount) {
+    return {
+      x: rect.x + amount,
+      y: rect.y + amount,
+      w: Math.max(1, rect.w - amount * 2),
+      h: Math.max(1, rect.h - amount * 2)
     };
   }
 
@@ -3862,6 +4663,7 @@
   function usesContentFrame(data) {
     if (!data) return false;
     if (isType(data, "Image")) return true;
+    if (isType(data, "TileSet")) return true;
     if ((data.history || []).join(" / ").includes("Image Input")) return true;
     if (isType(data, "LayerSet")) return (data.layers || []).some((layer) => usesContentFrame(layer.data));
     return false;
@@ -3878,13 +4680,20 @@
 
   function contentBounds(data) {
     if (!data) return null;
-    if (isType(data, "LayerSet")) return unionBounds(data.layers.map((layer) => contentBounds(layer.data)));
+    if (isType(data, "LayerSet")) {
+      return unionBounds([
+        ...(data.layers || []).map((layer) => contentBounds(layer.data)),
+        boundsFromPoints(data.overlayLabels || [])
+      ]);
+    }
     if (isType(data, "Image")) return {
       minX: data.originX,
       minY: data.originY,
       maxX: data.originX + data.width,
       maxY: data.originY + data.height
     };
+    if (isType(data, "TileSet")) return data.bounds || tileSetBounds(data.tiles || []);
+    if (isType(data, "CellSet")) return data.bounds || cellSetBounds(data.cells || []);
     if (isType(data, "Shape")) return data.bounds || boundsFromPoints((data.boundary || []).concat(data.fill || []));
     if (isType(data, "PointSet")) return unionBounds([boundsFromPoints(data.points || []), contentBounds(data.sourceShape)]);
     if (isType(data, "Field")) return fieldBounds(data);
@@ -3962,7 +4771,7 @@
     return `${Math.round(pt.x * 10) / 10}:${Math.round(pt.y * 10) / 10}`;
   }
 
-  function sampleFillFromContours(contours, bounds, spacing) {
+  function sampleFillFromContours(contours, bounds, spacing, fillRule = "evenodd") {
     if (!contours.length) return [];
     const fill = [];
     const minX = Math.max(0, bounds.minX);
@@ -3971,7 +4780,7 @@
     const maxY = Math.min(HEIGHT, bounds.maxY);
     for (let y = minY; y <= maxY; y += spacing) {
       for (let x = minX; x <= maxX; x += spacing) {
-        if (!contours.some((contour) => pointInPolygon({ x, y }, contour))) continue;
+        if (!pointInContours({ x, y }, contours, fillRule)) continue;
         const normal = normalize(x - CX, y - CY);
         fill.push(point(x, y, normal.x, normal.y, "interior"));
       }
@@ -4038,6 +4847,16 @@
   }
 
   function shapeTester(shape, step) {
+    if (shape.rasterMask) {
+      const ctx = shape.rasterMask.getContext("2d", { willReadFrequently: true });
+      const image = ctx.getImageData(0, 0, WIDTH, HEIGHT).data;
+      return (x, y) => {
+        const px = clamp(Math.round(x), 0, WIDTH - 1);
+        const py = clamp(Math.round(y), 0, HEIGHT - 1);
+        return (image[(py * WIDTH + px) * 4 + 3] || 0) > 24;
+      };
+    }
+
     if (shape.sampledBoolean) {
       const occupied = new Set((shape.fill || []).map((pt) => shapeCellKey(pt.x, pt.y, step)));
       return (x, y) => {
@@ -4054,7 +4873,8 @@
 
     const contours = (shape.contours || []).filter((contour) => contour.length > 2);
     if (contours.length) {
-      return (x, y) => contours.some((contour) => pointInPolygon({ x, y }, contour));
+      const fillRule = shape.fillRule || "evenodd";
+      return (x, y) => pointInContours({ x, y }, contours, fillRule);
     }
 
     const occupied = new Set((shape.fill || []).concat(shape.boundary || []).map((pt) => shapeCellKey(pt.x, pt.y, step)));
@@ -4120,6 +4940,17 @@
     });
     const closed = closePath(contour);
     return reverse ? closed.slice().reverse() : closed;
+  }
+
+  function polygonContour(sides, radius) {
+    const count = Math.max(3, Math.round(Number(sides || 3)));
+    return closePath(Array.from({ length: count }, (_, index) => {
+      const angle = -Math.PI / 2 + (index / count) * TAU;
+      const x = CX + Math.cos(angle) * radius;
+      const y = CY + Math.sin(angle) * radius;
+      const normal = normalize(x - CX, y - CY);
+      return point(x, y, normal.x, normal.y, "boundary");
+    }));
   }
 
   function circleFillBetween(inner, outer, step) {
@@ -4236,6 +5067,10 @@
       (data.layers || []).forEach((layer, index) => {
         mergeArtifactParts(parts, artifactPartsFromData(layer.data, opacity * (layer.opacity ?? 1), seed + index));
       });
+      parts.labels.push(...(data.overlayLabels || []).map((label) => ({
+        ...label,
+        a: (label.a ?? 0.8) * opacity
+      })));
       return parts;
     }
 
@@ -4253,6 +5088,11 @@
 
     if (isType(data, "TraceSet")) {
       parts.paths.push(...(data.paths || []).map(clonePath));
+      return parts;
+    }
+
+    if (isType(data, "CellSet")) {
+      parts.paths.push(...cellSetPaths(data).map(clonePath));
       return parts;
     }
 
@@ -4676,6 +5516,7 @@
         paths: (data.paths || []).map((path) => path.map(mapper))
       };
     }
+    if (isType(data, "CellSet")) return mapCellSetData(data, mapper);
     if (isType(data, "Artifact")) {
       return {
         ...data,
@@ -4685,9 +5526,18 @@
           contours: (fill.contours || []).map((contour) => contour.map(mapper))
         })),
         paths: (data.paths || []).map((path) => path.map(mapper)),
-        marks: (data.marks || []).map(mapper)
+        marks: (data.marks || []).map(mapper),
+        labels: (data.labels || []).map((label) => ({
+          ...mapper(label),
+          text: label.text,
+          size: label.size,
+          color: label.color,
+          a: label.a,
+          align: label.align
+        }))
       };
     }
+    if (isType(data, "TileSet")) return mapTileSetData(data, mapper);
     if (isType(data, "Image")) {
       return { ...data };
     }
@@ -4697,6 +5547,14 @@
         layers: (data.layers || []).map((layer) => ({
           ...layer,
           data: mapGeometryData(layer.data, mapper)
+        })),
+        overlayLabels: (data.overlayLabels || []).map((label) => ({
+          ...mapper(label),
+          text: label.text,
+          size: label.size,
+          color: label.color,
+          a: label.a,
+          align: label.align
         }))
       };
     }
@@ -4761,18 +5619,33 @@
           text: label.text,
           size: (label.size || 9) * factor,
           color: label.color,
-          a: label.a
+          a: label.a,
+          align: label.align
         })),
         stroke: data.stroke ? { ...data.stroke, width: data.stroke.width ? data.stroke.width * factor : data.stroke.width } : data.stroke
       };
     }
     if (isType(data, "Image")) return transformImageData(data, dx, dy, factor);
+    if (isType(data, "CellSet")) {
+      return mapCellSetData(data, (pt) => transformPointData(pt, dx, dy, factor));
+    }
+    if (isType(data, "TileSet")) {
+      return mapTileSetData(data, (pt) => transformPointData(pt, dx, dy, factor));
+    }
     if (isType(data, "LayerSet")) {
       return {
         ...data,
         layers: (data.layers || []).map((layer) => ({
           ...layer,
           data: transformData(layer.data, dx, dy, factor)
+        })),
+        overlayLabels: (data.overlayLabels || []).map((label) => ({
+          ...transformPointData(label, dx, dy, factor),
+          text: label.text,
+          size: (label.size || 9) * factor,
+          color: label.color,
+          a: label.a,
+          align: label.align
         }))
       };
     }
@@ -4835,7 +5708,8 @@
           text: label.text,
           size: (label.size || 9) * factor,
           color: label.color,
-          a: label.a
+          a: label.a,
+          align: label.align
         })),
         stroke: data.stroke ? { ...data.stroke, width: data.stroke.width ? data.stroke.width * factor : data.stroke.width } : data.stroke
       };
@@ -4850,16 +5724,82 @@
         scale: (data.scale || 100) * factor
       };
     }
+    if (isType(data, "CellSet")) {
+      return mapCellSetData(data, (pt) => scalePointAround(pt, center, factor));
+    }
+    if (isType(data, "TileSet")) {
+      return mapTileSetData(data, (pt) => scalePointAround(pt, center, factor));
+    }
     if (isType(data, "LayerSet")) {
       return {
         ...data,
         layers: (data.layers || []).map((layer) => ({
           ...layer,
           data: scaleDataAround(layer.data, center, factor)
+        })),
+        overlayLabels: (data.overlayLabels || []).map((label) => ({
+          ...scalePointAround(label, center, factor),
+          text: label.text,
+          size: (label.size || 9) * factor,
+          color: label.color,
+          a: label.a,
+          align: label.align
         }))
       };
     }
     return JSON.parse(JSON.stringify(data));
+  }
+
+  function mapTileSetData(tileSet, mapper) {
+    const tiles = (tileSet.tiles || []).map((tile) => {
+      const bounds = boundsFromPoints([
+        mapper({ x: tile.x, y: tile.y }),
+        mapper({ x: tile.x + tile.w, y: tile.y }),
+        mapper({ x: tile.x + tile.w, y: tile.y + tile.h }),
+        mapper({ x: tile.x, y: tile.y + tile.h })
+      ]);
+      return {
+        ...tile,
+        x: bounds.minX,
+        y: bounds.minY,
+        w: Math.max(1, bounds.maxX - bounds.minX),
+        h: Math.max(1, bounds.maxY - bounds.minY)
+      };
+    });
+    return {
+      ...tileSet,
+      tiles,
+      bounds: tileSetBounds(tiles)
+    };
+  }
+
+  function mapCellSetData(cellSet, mapper) {
+    const cells = (cellSet.cells || []).map((cell) => {
+      const paths = (cell.paths || []).map((path) => path.map(mapper));
+      const bounds = boundsFromPoints([
+        mapper({ x: cell.x, y: cell.y }),
+        mapper({ x: cell.x + cell.w, y: cell.y }),
+        mapper({ x: cell.x + cell.w, y: cell.y + cell.h }),
+        mapper({ x: cell.x, y: cell.y + cell.h })
+      ]);
+      return {
+        ...cell,
+        x: bounds.minX,
+        y: bounds.minY,
+        w: Math.max(1, bounds.maxX - bounds.minX),
+        h: Math.max(1, bounds.maxY - bounds.minY),
+        paths
+      };
+    });
+    return {
+      ...cellSet,
+      cells,
+      bounds: cellSetBounds(cells)
+    };
+  }
+
+  function cellSetPaths(cellSet) {
+    return (cellSet.cells || []).flatMap((cell) => (cell.paths || []).map(clonePath));
   }
 
   function scaleShapeAround(shape, center, factor) {
@@ -5003,8 +5943,62 @@
     return dataUrl;
   }
 
+  function tileSetRasterDataUrl(tileSet) {
+    if (!tileSet?.tiles?.length || typeof document === "undefined") return null;
+    const bounds = padBounds(tileSetBounds(tileSet.tiles), 2);
+    const width = Math.max(1, bounds.maxX - bounds.minX);
+    const height = Math.max(1, bounds.maxY - bounds.minY);
+    const renderScale = Math.min(1, 1800 / Math.max(width, height));
+    const key = `tiles:${tileSetFingerprint(tileSet)}:${round(bounds.minX)},${round(bounds.minY)},${round(width)},${round(height)},${round(renderScale)}`;
+    if (rasterDataUrlCache.has(key)) {
+      return { href: rasterDataUrlCache.get(key), bounds, width, height };
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * renderScale));
+    canvas.height = Math.max(1, Math.round(height * renderScale));
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.scale(renderScale, renderScale);
+    ctx.translate(-bounds.minX, -bounds.minY);
+    drawTileSet(ctx, tileSet);
+    ctx.restore();
+    const href = canvas.toDataURL("image/png");
+    cacheSetLimited(rasterDataUrlCache, key, href);
+    return { href, bounds, width, height };
+  }
+
   function rasterImageKey(image) {
     return image.rasterKey || `pixels:${image.cols}x${image.rows}:${pixelFingerprint(image.pixels)}`;
+  }
+
+  function tileSetFingerprint(tileSet) {
+    const image = tileSet?.image || {};
+    const tileSample = (tileSet?.tiles || []).slice(0, 240).map((tile) => [
+      round(tile.sx || 0),
+      round(tile.sy || 0),
+      round(tile.sw || 0),
+      round(tile.sh || 0),
+      round(tile.x || 0),
+      round(tile.y || 0),
+      round(tile.w || 0),
+      round(tile.h || 0),
+      tile.pixelMode || ""
+    ].join(",")).join("|");
+    return `tiles:${image.cols || 0}x${image.rows || 0}:${pixelFingerprint(image.pixels)}:${tileSet?.tiles?.length || 0}:${tileSample}`;
+  }
+
+  function cellSetFingerprint(cellSet) {
+    const sample = (cellSet?.cells || []).slice(0, 180).map((cell) => [
+      round(cell.x || 0),
+      round(cell.y || 0),
+      round(cell.w || 0),
+      round(cell.h || 0),
+      cell.sourceIndex ?? cell.index,
+      (cell.paths || []).length,
+      (cell.paths || [])[0]?.length || 0
+    ].join(",")).join("|");
+    return `cells:${cellSet?.cells?.length || 0}:${sample}`;
   }
 
   function pixelFingerprint(pixels) {
@@ -5334,6 +6328,13 @@
     dither,
     repeatData,
     matrixRepeatData,
+    gridSliceImage,
+    shuffleTiles,
+    stretchTiles,
+    traceSlice,
+    shuffleCells,
+    stretchCells,
+    cellsToTraceSet,
     flattenLayers,
     layersToTraceSet,
     rasterizeLayers,
@@ -5343,6 +6344,7 @@
     randomStrokeColor,
     randomSize,
     pointLabels,
+    layerLabels,
     layerStack,
     draw,
     toSvg

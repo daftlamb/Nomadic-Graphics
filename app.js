@@ -35,12 +35,14 @@ const DATA_TYPES = {
   traces: "TraceSet",
   artifact: "Artifact",
   layers: "LayerSet",
+  tiles: "TileSet",
+  cells: "CellSet",
   value: "Value",
   array: "Array",
   color: "Color"
 };
 
-const ACCEPTS_PREVIEW = "image,shape,points,field,traces,artifact,layers";
+const ACCEPTS_PREVIEW = "image,shape,points,field,traces,artifact,layers,tiles,cells";
 
 const nodeGroups = [
   {
@@ -77,6 +79,7 @@ const nodeGroups = [
         widgets: [
           ["slider", "Width", 560, 120, 900],
           ["slider", "Height", 320, 80, 620],
+          ["slider", "Corner Radius", 0, 0, 180],
           ["combo", "Body", "Show", ["Show", "Hide"]]
         ]
       },
@@ -343,6 +346,14 @@ const nodeGroups = [
           ["slider", "Detail", 72, 36, 120],
           ["slider", "Sensitivity", 46, 0, 100]
         ]
+      },
+      {
+        type: "nomadic/convert/cells_to_traces",
+        title: "Cells To TraceSet",
+        input: "cells",
+        output: "traces",
+        description: "Flattens sliced geometry cells back into trace paths.",
+        widgets: []
       }
     ]
   },
@@ -511,6 +522,91 @@ const nodeGroups = [
           ["slider", "Jitter", 0, 0, 80],
           ["slider", "Fade", 0, 0, 80]
         ]
+      },
+      {
+        type: "nomadic/process/grid_slice",
+        title: "Grid Slice",
+        input: "image",
+        output: "tiles",
+        description: "Cuts an image into movable raster tiles.",
+        widgets: [
+          ["combo", "Mode", "Regular", ["Regular", "Uneven", "Noise Grid"]],
+          ["slider", "Columns", 8, 2, 24],
+          ["slider", "Rows", 6, 2, 24],
+          ["slider", "Gap", 0, 0, 36],
+          ["slider", "Crop Padding", 0, 0, 24],
+          ["slider", "Jitter", 0, 0, 80],
+          ["slider", "Seed", 0, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/process/shuffle_tiles",
+        title: "Shuffle Tiles",
+        input: "tiles",
+        output: "tiles",
+        description: "Reorders image tiles without vectorizing the image.",
+        widgets: [
+          ["combo", "Mode", "Random", ["Random", "Row Drift", "Column Drift", "Noise Sort", "Reverse"]],
+          ["slider", "Amount", 100, 0, 100],
+          ["slider", "Seed", 0, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/process/stretch_tiles",
+        title: "Stretch Tiles",
+        input: "tiles",
+        output: "tiles",
+        description: "Stretches selected image tiles into smeared raster strips.",
+        widgets: [
+          ["combo", "Axis", "Horizontal", ["Horizontal", "Vertical", "Mixed"]],
+          ["combo", "Anchor", "Center", ["Left", "Center", "Right"]],
+          ["combo", "Pixel Mode", "Smear", ["Smooth", "Hard Pixel", "Smear"]],
+          ["slider", "Amount", 120, 0, 320],
+          ["slider", "Chance", 42, 0, 100],
+          ["slider", "Seed", 0, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/process/trace_slice",
+        title: "Trace Slice",
+        input: "traces",
+        output: "cells",
+        description: "Cuts trace geometry into movable map cells.",
+        widgets: [
+          ["combo", "Mode", "Regular", ["Regular", "Uneven", "Noise Grid"]],
+          ["slider", "Columns", 8, 2, 24],
+          ["slider", "Rows", 6, 2, 24],
+          ["slider", "Gap", 0, 0, 36],
+          ["slider", "Clip Padding", 0, 0, 36],
+          ["slider", "Jitter", 0, 0, 80],
+          ["slider", "Seed", 0, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/process/shuffle_cells",
+        title: "Shuffle Cells",
+        input: "cells",
+        output: "cells",
+        description: "Reorders sliced trace cells like displaced map fragments.",
+        widgets: [
+          ["combo", "Mode", "Random", ["Random", "Row Drift", "Column Drift", "Noise Sort", "Reverse"]],
+          ["slider", "Amount", 100, 0, 100],
+          ["slider", "Seed", 0, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/process/stretch_cells",
+        title: "Stretch Cells",
+        input: "cells",
+        output: "cells",
+        description: "Stretches selected trace cells and the lines inside them.",
+        widgets: [
+          ["combo", "Axis", "Horizontal", ["Horizontal", "Vertical", "Mixed"]],
+          ["combo", "Anchor", "Center", ["Left", "Center", "Right"]],
+          ["slider", "Amount", 120, 0, 320],
+          ["slider", "Chance", 42, 0, 100],
+          ["slider", "Seed", 0, 0, 100]
+        ]
       }
     ]
   },
@@ -520,9 +616,9 @@ const nodeGroups = [
       {
         type: "nomadic/material/image_weathering",
         title: "Image Weathering",
-        input: "image",
+        input: "image,tiles",
         output: "image",
-        description: "Ages raster images with paper, photocopy, toner, and transfer artifacts.",
+        description: "Ages raster images or tile sets with paper, photocopy, toner, and transfer artifacts.",
         widgets: [
           ["combo", "Mode", "Photocopy", ["Photocopy", "Print Transfer", "Newsprint", "Archive Dust"]],
           ["slider", "Exposure", 0, -80, 80],
@@ -656,6 +752,26 @@ const nodeGroups = [
           ["slider", "Offset", 8, 0, 42],
           ["slider", "Limit", 900, 20, 2200],
           ["slider", "Opacity", 80, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/style/layer_labels",
+        title: "Layer Labels",
+        inputs: [
+          { name: "Layers", type: "layers" },
+          { name: "Array", type: "array", optional: true },
+          { name: "Color", type: "color", optional: true }
+        ],
+        output: "layers",
+        description: "Places array values on every layer in a repeated stack.",
+        widgets: [
+          ["combo", "Align", "Center", ["Center", "Left", "Right"]],
+          ["slider", "Size", 18, 6, 56],
+          ["slider", "Padding", 0, 0, 96],
+          ["combo", "Color Mode", "Input", ["Input", "Random", "Ink", "Moss", "Water", "Clay", "Sand", "Paper"]],
+          ["combo", "Palette", "Survey", ["Survey", "Warm", "Cool", "Ink", "Random"]],
+          ["slider", "Seed", 0, 0, 100],
+          ["slider", "Opacity", 90, 0, 100]
         ]
       }
     ]
@@ -977,6 +1093,7 @@ function resizePreviewNodeToData(node, data, def) {
 function isImageDerivedData(data) {
   if (!data) return false;
   if (data.ngType === "Image") return true;
+  if (data.ngType === "TileSet") return true;
   if ((data.history || []).join(" / ").includes("Image Input")) return true;
   if (data.ngType === "LayerSet") return (data.layers || []).some((layer) => isImageDerivedData(layer.data));
   return false;
@@ -994,6 +1111,22 @@ function dataBounds(data) {
       maxX: minX + Number(data.width || NomadicGeometry.WIDTH),
       maxY: minY + Number(data.height || NomadicGeometry.HEIGHT)
     };
+  }
+  if (data.ngType === "TileSet") {
+    return data.bounds || unionDataBounds((data.tiles || []).map((tile) => ({
+      minX: Number(tile.x || 0),
+      minY: Number(tile.y || 0),
+      maxX: Number(tile.x || 0) + Number(tile.w || 0),
+      maxY: Number(tile.y || 0) + Number(tile.h || 0)
+    })));
+  }
+  if (data.ngType === "CellSet") {
+    return data.bounds || unionDataBounds((data.cells || []).map((cell) => ({
+      minX: Number(cell.x || 0),
+      minY: Number(cell.y || 0),
+      maxX: Number(cell.x || 0) + Number(cell.w || 0),
+      maxY: Number(cell.y || 0) + Number(cell.h || 0)
+    })));
   }
   if (data.ngType === "Field") {
     const minX = Number(data.originX ?? 0);
@@ -1111,7 +1244,12 @@ function runNode(def, inputs, props) {
     });
   }
   if (def.type === "nomadic/source/rectangle_shape") {
-    return NomadicGeometry.createRectangleShape({ width: props.width, height: props.height, body: props.body });
+    return NomadicGeometry.createRectangleShape({
+      width: props.width,
+      height: props.height,
+      cornerRadius: props.corner_radius,
+      body: props.body
+    });
   }
   if (def.type === "nomadic/source/polygon_shape") {
     return NomadicGeometry.createPolygonShape({ sides: props.sides, radius: props.radius, body: props.body });
@@ -1297,6 +1435,9 @@ function runNode(def, inputs, props) {
       sensitivity: props.sensitivity
     });
   }
+  if (def.type === "nomadic/convert/cells_to_traces") {
+    return NomadicGeometry.cellsToTraceSet(input);
+  }
   if (def.type === "nomadic/field/invert") {
     return NomadicGeometry.invertField(input, { mix: props.mix });
   }
@@ -1372,6 +1513,61 @@ function runNode(def, inputs, props) {
       fade: props.fade
     }, state.seed);
   }
+  if (def.type === "nomadic/process/grid_slice") {
+    return NomadicGeometry.gridSliceImage(input, {
+      mode: props.mode,
+      columns: props.columns,
+      rows: props.rows,
+      gap: props.gap,
+      cropPadding: props.crop_padding,
+      jitter: props.jitter,
+      seed: props.seed
+    }, state.seed);
+  }
+  if (def.type === "nomadic/process/shuffle_tiles") {
+    return NomadicGeometry.shuffleTiles(input, {
+      mode: props.mode,
+      amount: props.amount,
+      seed: props.seed
+    }, state.seed);
+  }
+  if (def.type === "nomadic/process/stretch_tiles") {
+    return NomadicGeometry.stretchTiles(input, {
+      axis: props.axis,
+      anchor: props.anchor,
+      pixelMode: props.pixel_mode,
+      amount: props.amount,
+      chance: props.chance,
+      seed: props.seed
+    }, state.seed);
+  }
+  if (def.type === "nomadic/process/trace_slice") {
+    return NomadicGeometry.traceSlice(input, {
+      mode: props.mode,
+      columns: props.columns,
+      rows: props.rows,
+      gap: props.gap,
+      clipPadding: props.clip_padding,
+      jitter: props.jitter,
+      seed: props.seed
+    }, state.seed);
+  }
+  if (def.type === "nomadic/process/shuffle_cells") {
+    return NomadicGeometry.shuffleCells(input, {
+      mode: props.mode,
+      amount: props.amount,
+      seed: props.seed
+    }, state.seed);
+  }
+  if (def.type === "nomadic/process/stretch_cells") {
+    return NomadicGeometry.stretchCells(input, {
+      axis: props.axis,
+      anchor: props.anchor,
+      amount: props.amount,
+      chance: props.chance,
+      seed: props.seed
+    }, state.seed);
+  }
   if (def.type === "nomadic/style/color") {
     return NomadicGeometry.createColor({
       palette: props.palette,
@@ -1429,6 +1625,18 @@ function runNode(def, inputs, props) {
       size: props.size,
       offset: props.offset,
       limit: props.limit,
+      opacity: props.opacity
+    }, state.seed);
+  }
+  if (def.type === "nomadic/style/layer_labels") {
+    return NomadicGeometry.layerLabels(inputs[0], inputs[1], {
+      color: inputs[2],
+      align: props.align,
+      size: props.size,
+      padding: props.padding,
+      colorMode: props.color_mode,
+      palette: props.palette,
+      seed: props.seed,
       opacity: props.opacity
     }, state.seed);
   }
@@ -1659,7 +1867,7 @@ function libraryGroupKey(name) {
 
 function libraryGroups() {
   if (state.libraryMode === "Process") return nodeGroups;
-  const typeOrder = ["image", "shape", "points", "field", "traces", "artifact", "layers", "value", "array", "color"];
+  const typeOrder = ["image", "tiles", "shape", "points", "field", "traces", "cells", "artifact", "layers", "value", "array", "color"];
   return typeOrder
     .map((type) => ({
       name: readableType(type),

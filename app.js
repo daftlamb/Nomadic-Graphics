@@ -38,6 +38,7 @@ const DATA_TYPES = {
   layers: "LayerSet",
   tiles: "TileSet",
   cells: "CellSet",
+  selector: "Selector",
   value: "Value",
   array: "Array",
   color: "Color"
@@ -47,7 +48,7 @@ const ACCEPTS_PREVIEW = "image,shape,points,field,traces,artifact,layers,tiles,c
 
 const nodeGroups = [
   {
-    name: "Source",
+    name: "Input",
     nodes: [
       {
         type: "nomadic/source/text_shape",
@@ -156,7 +157,7 @@ const nodeGroups = [
     ]
   },
   {
-    name: "Geometry",
+    name: "Structure",
     nodes: [
       {
         type: "nomadic/geometry/scale_shape",
@@ -262,7 +263,7 @@ const nodeGroups = [
     ]
   },
   {
-    name: "Convert",
+    name: "Utility",
     nodes: [
       {
         type: "nomadic/convert/trace_to_shape",
@@ -359,7 +360,7 @@ const nodeGroups = [
     ]
   },
   {
-    name: "Field",
+    name: "Control",
     nodes: [
       {
         type: "nomadic/field/invert",
@@ -372,7 +373,46 @@ const nodeGroups = [
     ]
   },
   {
-    name: "Boolean",
+    name: "Selector",
+    nodes: [
+      {
+        type: "nomadic/selector/noise",
+        title: "Noise Selector",
+        output: "selector",
+        description: "Selects slices with reusable procedural noise.",
+        widgets: [
+          ["slider", "Threshold", 50, 0, 100],
+          ["slider", "Scale", 60, 8, 180],
+          ["slider", "Seed", 0, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/selector/row_column",
+        title: "Row/Column Selector",
+        output: "selector",
+        description: "Selects slices by row, column, checkerboard, or border rules.",
+        widgets: [
+          ["combo", "Mode", "Checkerboard", ["Rows", "Columns", "Checkerboard", "Border", "Center"]],
+          ["slider", "Period", 2, 1, 12],
+          ["slider", "Offset", 0, 0, 12]
+        ]
+      },
+      {
+        type: "nomadic/selector/gradient",
+        title: "Gradient Selector",
+        output: "selector",
+        description: "Selects slices across horizontal, vertical, or radial gradients.",
+        widgets: [
+          ["combo", "Axis", "Horizontal", ["Horizontal", "Vertical", "Radial"]],
+          ["combo", "Invert", "Off", ["Off", "On"]],
+          ["slider", "Threshold", 50, 0, 100],
+          ["slider", "Softness", 20, 0, 100]
+        ]
+      }
+    ]
+  },
+  {
+    name: "Combine",
     nodes: [
       {
         type: "nomadic/boolean/shape",
@@ -402,7 +442,7 @@ const nodeGroups = [
     ]
   },
   {
-    name: "Process",
+    name: "Transform",
     nodes: [
       {
         type: "nomadic/process/growth",
@@ -561,9 +601,30 @@ const nodeGroups = [
         ]
       },
       {
+        type: "nomadic/process/mix_tiles",
+        title: "Mix Tiles",
+        inputs: [
+          { name: "Tiles A", type: "tiles,layers" },
+          { name: "Tiles B", type: "tiles,layers" },
+          { name: "Selector", type: "selector", optional: true }
+        ],
+        output: "tiles",
+        description: "Interleaves slices from two image tile sets.",
+        widgets: [
+          ["combo", "Mode", "Checkerboard", ["Checkerboard", "Random", "Rows", "Columns", "Noise Mask", "Reverse", "Blend"]],
+          ["combo", "Layout", "Own Grid", ["Own Grid", "A Grid"]],
+          ["combo", "Fit", "Cover", ["Cover", "Contain", "Stretch"]],
+          ["slider", "Amount", 50, 0, 100],
+          ["slider", "Seed", 0, 0, 100]
+        ]
+      },
+      {
         type: "nomadic/process/stretch_tiles",
         title: "Stretch Tiles",
-        input: "tiles",
+        inputs: [
+          { name: "TileSet", type: "tiles" },
+          { name: "Selector", type: "selector", optional: true }
+        ],
         output: "tiles",
         description: "Stretches selected image tiles into smeared raster strips.",
         widgets: [
@@ -625,9 +686,9 @@ const nodeGroups = [
       {
         type: "nomadic/material/image_weathering",
         title: "Image Weathering",
-        input: "image,tiles",
-        output: "image",
-        description: "Ages raster images or tile sets with paper, photocopy, toner, and transfer artifacts.",
+        input: "image,tiles,layers",
+        output: "image,layers",
+        description: "Ages raster images, tile sets, or labeled layers with paper, photocopy, toner, and transfer artifacts.",
         widgets: [
           ["combo", "Mode", "Photocopy", ["Photocopy", "Print Transfer", "Newsprint", "Archive Dust"]],
           ["combo", "Tone", "Neutral", ["Neutral", "Tint", "Duotone"]],
@@ -1535,6 +1596,28 @@ function runNode(def, inputs, props) {
   if (def.type === "nomadic/field/invert") {
     return NomadicGeometry.invertField(input, { mix: props.mix });
   }
+  if (def.type === "nomadic/selector/noise") {
+    return NomadicGeometry.noiseSelector({
+      threshold: props.threshold,
+      scale: props.scale,
+      seed: props.seed
+    }, state.seed);
+  }
+  if (def.type === "nomadic/selector/row_column") {
+    return NomadicGeometry.rowColumnSelector({
+      mode: props.mode,
+      period: props.period,
+      offset: props.offset
+    }, state.seed);
+  }
+  if (def.type === "nomadic/selector/gradient") {
+    return NomadicGeometry.gradientSelector({
+      axis: props.axis,
+      invert: props.invert,
+      threshold: props.threshold,
+      softness: props.softness
+    }, state.seed);
+  }
   if (def.type === "nomadic/boolean/shape") {
     return NomadicGeometry.shapeBoolean(inputs[0], inputs[1], {
       mode: props.mode,
@@ -1630,8 +1713,19 @@ function runNode(def, inputs, props) {
       seed: props.seed
     }, state.seed);
   }
+  if (def.type === "nomadic/process/mix_tiles") {
+    return NomadicGeometry.mixTiles(inputs[0], inputs[1], {
+      selector: inputs[2],
+      mode: props.mode,
+      layout: props.layout,
+      fit: props.fit,
+      amount: props.amount,
+      seed: props.seed
+    }, state.seed);
+  }
   if (def.type === "nomadic/process/stretch_tiles") {
     return NomadicGeometry.stretchTiles(input, {
+      selector: inputs[1],
       axis: props.axis,
       anchor: props.anchor,
       pixelMode: props.pixel_mode,
@@ -2039,7 +2133,7 @@ function libraryGroupKey(name) {
 
 function libraryGroups() {
   if (state.libraryMode === "Process") return nodeGroups;
-  const typeOrder = ["image", "tiles", "shape", "points", "field", "traces", "cells", "artifact", "layers", "value", "array", "color"];
+  const typeOrder = ["image", "tiles", "selector", "shape", "points", "field", "traces", "cells", "artifact", "layers", "value", "array", "color"];
   return typeOrder
     .map((type) => ({
       name: readableType(type),

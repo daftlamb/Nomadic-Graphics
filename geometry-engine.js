@@ -664,6 +664,200 @@
     };
   }
 
+  function mixTiles(tileSetA, tileSetB, options = {}, seed = 0) {
+    const inputA = tileSourceFromData(tileSetA);
+    const inputB = tileSourceFromData(tileSetB);
+    if (!inputA.tileSet || !inputB.tileSet) return null;
+    const tilesA = inputA.tileSet.tiles || [];
+    const tilesB = inputB.tileSet.tiles || [];
+    if (!tilesA.length || !tilesB.length) return null;
+    const mode = options.mode || "Checkerboard";
+    const layout = options.layout || "Own Grid";
+    const fit = options.fit || "Cover";
+    const amount = clamp(Number(options.amount ?? 50) / 100);
+    const localSeed = seed + Number(options.seed || 0) * 1009;
+    const selector = isType(options.selector, "Selector") ? options.selector : null;
+    const selectorBounds = unionBounds([tileSetBounds(tilesA), tileSetBounds(tilesB)]);
+    const outputTiles = [];
+    const usedA = new Set();
+    const usedB = new Set();
+
+    tilesA.forEach((tile, index) => {
+      const sourceTileB = matchedMixTile(tilesB, tile, index, mode);
+      const useB = selector
+        ? selectorAllows(selector, tile, index, selectorBounds, amount)
+        : shouldUseMixedTile(tile, index, mode, amount, localSeed);
+      const baseTile = { ...tile, image: tile.image || inputA.tileSet.image };
+      if (mode === "Blend") {
+        outputTiles.push(baseTile);
+        outputTiles.push(mixedTileFromSource(baseTile, sourceTileB, inputB.tileSet.image, amount, fit, layout));
+        usedA.add(tile.index ?? index);
+        if (sourceTileB) usedB.add(sourceTileB.index ?? index);
+      } else {
+        outputTiles.push(useB ? mixedTileFromSource(baseTile, sourceTileB, inputB.tileSet.image, 1, fit, layout) : baseTile);
+        if (useB && sourceTileB) usedB.add(sourceTileB.index ?? index);
+        else usedA.add(tile.index ?? index);
+      }
+    });
+
+    const overlayLabels = filterSliceLabels(inputA.overlayLabels, usedA).concat(filterSliceLabels(inputB.overlayLabels, usedB));
+
+    return {
+      ...inputA.tileSet,
+      label: `${inputA.tileSet.label || "TileSet"} + ${inputB.tileSet.label || "TileSet"} / Mix Tiles`,
+      tiles: outputTiles,
+      bounds: tileSetBounds(outputTiles),
+      overlayLabels,
+      history: (inputA.tileSet.history || ["TileSet"]).concat([`Mix Tiles(${mode})`]),
+      stats: {
+        ...(inputA.tileSet.stats || {}),
+        mix: mode,
+        layout,
+        fit,
+        amount: Math.round(amount * 100),
+        selector: selector ? selector.label : "",
+        sourceTiles: tilesB.length,
+        outputTiles: outputTiles.length
+      }
+    };
+  }
+
+  function tileSourceFromData(data) {
+    if (isType(data, "TileSet")) return { tileSet: data, overlayLabels: data.overlayLabels || [] };
+    if (isType(data, "LayerSet")) {
+      const layer = (data.layers || []).find((item) => isType(item.data, "TileSet"));
+      return {
+        tileSet: layer ? layer.data : null,
+        overlayLabels: data.overlayLabels || []
+      };
+    }
+    return { tileSet: null, overlayLabels: [] };
+  }
+
+  function filterSliceLabels(labels, usedIndices) {
+    if (!labels?.length) return [];
+    return labels.filter((label) => usedIndices.has(label.sliceIndex));
+  }
+
+  function selectorAllows(selector, item, index, bounds, amount = 0.5) {
+    if (!isType(selector, "Selector")) return true;
+    const value = selectorValue(selector, item, index, bounds);
+    return value >= 1 - clamp(amount);
+  }
+
+  function selectorValue(selector, item, index, bounds) {
+    if (selector.kind === "rowColumn") return rowColumnSelectorValue(selector, item, bounds);
+    if (selector.kind === "gradient") return gradientSelectorValue(selector, item, bounds);
+    return noiseSelectorValue(selector, item, index, bounds);
+  }
+
+  function noiseSelectorValue(selector, item, index, bounds) {
+    const center = itemCenter(item);
+    const minX = bounds?.minX ?? 0;
+    const minY = bounds?.minY ?? 0;
+    const scale = Math.max(1, Number(selector.scale || 60));
+    const nx = Math.round((center.x - minX) / scale);
+    const ny = Math.round((center.y - minY) / scale);
+    const raw = noise(Number(selector.seed || 0) + nx * 101, ny * 193 + index * 17);
+    return raw >= selector.threshold ? raw : 0;
+  }
+
+  function rowColumnSelectorValue(selector, item, bounds) {
+    const row = Math.round(Number(item.row || 0));
+    const col = Math.round(Number(item.col || 0));
+    const period = Math.max(1, Math.round(Number(selector.period || 2)));
+    const offset = Math.round(Number(selector.offset || 0));
+    if (selector.mode === "Rows") return mod(row + offset, period) === 0 ? 1 : 0;
+    if (selector.mode === "Columns") return mod(col + offset, period) === 0 ? 1 : 0;
+    if (selector.mode === "Border") return isBorderItem(item, bounds) ? 1 : 0;
+    if (selector.mode === "Center") return 1 - normalizedDistanceFromCenter(item, bounds);
+    return mod(row + col + offset, period) === 0 ? 1 : 0;
+  }
+
+  function gradientSelectorValue(selector, item, bounds) {
+    const center = itemCenter(item);
+    const width = Math.max(1, (bounds?.maxX ?? WIDTH) - (bounds?.minX ?? 0));
+    const height = Math.max(1, (bounds?.maxY ?? HEIGHT) - (bounds?.minY ?? 0));
+    let value = 0;
+    if (selector.axis === "Vertical") {
+      value = (center.y - (bounds?.minY ?? 0)) / height;
+    } else if (selector.axis === "Radial") {
+      value = normalizedDistanceFromCenter(item, bounds);
+    } else {
+      value = (center.x - (bounds?.minX ?? 0)) / width;
+    }
+    if (selector.invert) value = 1 - value;
+    const softness = Math.max(0.001, Number(selector.softness || 0.2));
+    return smoothstep(selector.threshold - softness, selector.threshold + softness, clamp(value));
+  }
+
+  function itemCenter(item) {
+    return {
+      x: Number(item.x || 0) + Number(item.w || 0) / 2,
+      y: Number(item.y || 0) + Number(item.h || 0) / 2
+    };
+  }
+
+  function normalizedDistanceFromCenter(item, bounds) {
+    const center = itemCenter(item);
+    const cx = ((bounds?.minX ?? 0) + (bounds?.maxX ?? WIDTH)) / 2;
+    const cy = ((bounds?.minY ?? 0) + (bounds?.maxY ?? HEIGHT)) / 2;
+    const maxD = Math.hypot(((bounds?.maxX ?? WIDTH) - (bounds?.minX ?? 0)) / 2, ((bounds?.maxY ?? HEIGHT) - (bounds?.minY ?? 0)) / 2) || 1;
+    return clamp(Math.hypot(center.x - cx, center.y - cy) / maxD);
+  }
+
+  function isBorderItem(item, bounds) {
+    const x = Number(item.x || 0), y = Number(item.y || 0), w = Number(item.w || 0), h = Number(item.h || 0);
+    const eps = Math.max(1, Math.min((bounds?.maxX ?? WIDTH) - (bounds?.minX ?? 0), (bounds?.maxY ?? HEIGHT) - (bounds?.minY ?? 0)) * 0.025);
+    return Math.abs(x - (bounds?.minX ?? 0)) <= eps || Math.abs(y - (bounds?.minY ?? 0)) <= eps || Math.abs(x + w - (bounds?.maxX ?? WIDTH)) <= eps || Math.abs(y + h - (bounds?.maxY ?? HEIGHT)) <= eps;
+  }
+
+  function mod(value, period) {
+    return ((value % period) + period) % period;
+  }
+
+  function matchedMixTile(tiles, target, index, mode) {
+    if (!tiles.length) return null;
+    if (mode === "Reverse") return tiles[tiles.length - 1 - (index % tiles.length)] || tiles[0];
+    const rowMatch = tiles.find((tile) => tile.row === target.row && tile.col === target.col);
+    return rowMatch || tiles[index % tiles.length] || tiles[0];
+  }
+
+  function shouldUseMixedTile(tile, index, mode, amount, seed) {
+    if (mode === "Blend") return true;
+    if (mode === "Rows") return (tile.row || 0) % 2 === 1;
+    if (mode === "Columns") return (tile.col || 0) % 2 === 1;
+    if (mode === "Checkerboard") return ((tile.row || 0) + (tile.col || 0)) % 2 === 1;
+    if (mode === "Reverse") return true;
+    if (mode === "Noise Mask") {
+      const row = Number(tile.row || 0), col = Number(tile.col || 0);
+      const value = noise(seed + 139, row * 97 + col * 193 + index * 11);
+      return value <= amount;
+    }
+    return noise(seed + 149, index * 53 + 11) <= amount;
+  }
+
+  function mixedTileFromSource(targetTile, sourceTile, image, opacity, fit, layout) {
+    const source = sourceTile || targetTile;
+    const frame = layout === "A Grid" ? targetTile : source;
+    return {
+      ...source,
+      x: frame.x,
+      y: frame.y,
+      w: frame.w,
+      h: frame.h,
+      row: frame.row,
+      col: frame.col,
+      index: frame.index,
+      opacity: (source.opacity ?? targetTile.opacity ?? 1) * opacity,
+      fit: layout === "A Grid" ? fit : "Stretch",
+      image,
+      sourceIndex: source.sourceIndex ?? source.index,
+      sourceRow: source.sourceRow ?? source.row,
+      sourceCol: source.sourceCol ?? source.col
+    };
+  }
+
   function stretchTiles(tileSet, options = {}, seed = 0) {
     if (!isType(tileSet, "TileSet")) return null;
     const amount = Math.max(0, Number(options.amount || 120)) / 100;
@@ -672,8 +866,11 @@
     const anchor = options.anchor || "Center";
     const pixelMode = options.pixelMode || "Smear";
     const localSeed = seed + Number(options.seed || 0) * 1009;
+    const selector = isType(options.selector, "Selector") ? options.selector : null;
+    const bounds = tileSetBounds(tileSet.tiles || []);
     const tiles = (tileSet.tiles || []).map((tile, index) => {
-      if (noise(localSeed + 71, index * 83 + 19) > chance) return { ...tile };
+      const selected = selector ? selectorAllows(selector, tile, index, bounds, chance) : noise(localSeed + 71, index * 83 + 19) <= chance;
+      if (!selected) return { ...tile };
       const axis = axisMode === "Mixed"
         ? (noise(localSeed + 73, index * 89 + 23) > 0.5 ? "Vertical" : "Horizontal")
         : axisMode;
@@ -713,6 +910,7 @@
         stretch: axisMode,
         chance: Math.round(chance * 100),
         amount: Math.round(amount * 100),
+        selector: selector ? selector.label : "",
         pixelMode
       }
     };
@@ -1050,9 +1248,44 @@
   }
 
   function imageWeathering(image, options = {}, seed = 0) {
+    if (isType(image, "LayerSet")) {
+      const layer = (image.layers || []).find((item) => isType(item.data, "TileSet") || isType(item.data, "Image"));
+      if (!layer) return image;
+      const weathered = imageWeathering(layer.data, options, seed);
+      if (!weathered) return image;
+      if (isType(weathered, "LayerSet")) {
+        return {
+          ...weathered,
+          overlayLabels: uniqueLabels((weathered.overlayLabels || []).concat(image.overlayLabels || []))
+        };
+      }
+      return {
+        ngType: "LayerSet",
+        label: `${image.label || "LayerSet"} / Image Weathering`,
+        layers: [{ data: weathered, opacity: layer.opacity ?? 1, blendMode: layer.blendMode }],
+        overlayLabels: uniqueLabels(image.overlayLabels || []),
+        history: (image.history || ["LayerSet"]).concat([`Image Weathering(${options.mode || "Photocopy"})`]),
+        stats: {
+          ...(weathered.stats || {}),
+          labels: (image.overlayLabels || []).length
+        }
+      };
+    }
     if (isType(image, "TileSet")) {
       const baked = tileSetToImage(image, options);
-      return baked ? imageWeathering(baked, options, seed) : image;
+      const weathered = baked ? imageWeathering(baked, options, seed) : null;
+      if (!weathered || !(image.overlayLabels || []).length) return weathered || image;
+      return {
+        ngType: "LayerSet",
+        label: `${image.label || "TileSet"} / Image Weathering`,
+        layers: [{ data: weathered, opacity: 1 }],
+        overlayLabels: uniqueLabels(image.overlayLabels || []),
+        history: (image.history || ["TileSet"]).concat([`Image Weathering(${options.mode || "Photocopy"})`]),
+        stats: {
+          ...(weathered.stats || {}),
+          labels: (image.overlayLabels || []).length
+        }
+      };
     }
     if (!isType(image, "Image") || !image.pixels?.length || !image.cols || !image.rows) return image || null;
 
@@ -1174,6 +1407,22 @@
         paper: Math.round(paper * 100)
       }
     };
+  }
+
+  function uniqueLabels(labels) {
+    const seen = new Set();
+    return (labels || []).filter((label) => {
+      const key = [
+        label.text || "",
+        Math.round(Number(label.x || 0) * 10),
+        Math.round(Number(label.y || 0) * 10),
+        label.sliceIndex ?? "",
+        label.sourceIndex ?? ""
+      ].join(":");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   function applyWeatherTone(base, gray, tone, amount, inkColor, paperColor) {
@@ -1600,6 +1849,58 @@
         digits,
         preview: values.slice(0, 3).join(" ")
       }
+    };
+  }
+
+  function noiseSelector(options = {}, seed = 0) {
+    const threshold = clamp(Number(options.threshold ?? 50) / 100);
+    const scale = Math.max(1, Number(options.scale || 60));
+    const localSeed = seed + Number(options.seed || 0) * 1009;
+    return {
+      ngType: "Selector",
+      kind: "noise",
+      label: `Noise Selector(${Math.round(threshold * 100)})`,
+      threshold,
+      scale,
+      seed: localSeed,
+      history: [`Noise Selector(${Math.round(threshold * 100)})`],
+      stats: { threshold: Math.round(threshold * 100), scale: Math.round(scale) }
+    };
+  }
+
+  function rowColumnSelector(options = {}, seed = 0) {
+    const mode = options.mode || "Checkerboard";
+    const period = Math.max(1, Math.round(Number(options.period || 2)));
+    const offset = Math.round(Number(options.offset || 0));
+    return {
+      ngType: "Selector",
+      kind: "rowColumn",
+      label: `${mode} Selector`,
+      mode,
+      period,
+      offset,
+      seed,
+      history: [`Row/Column Selector(${mode})`],
+      stats: { mode, period, offset }
+    };
+  }
+
+  function gradientSelector(options = {}, seed = 0) {
+    const axis = options.axis || "Horizontal";
+    const invert = options.invert === "On";
+    const threshold = clamp(Number(options.threshold ?? 50) / 100);
+    const softness = clamp(Number(options.softness || 20) / 100);
+    return {
+      ngType: "Selector",
+      kind: "gradient",
+      label: `${axis} Gradient Selector`,
+      axis,
+      invert,
+      threshold,
+      softness,
+      seed,
+      history: [`Gradient Selector(${axis})`],
+      stats: { axis, threshold: Math.round(threshold * 100), softness: Math.round(softness * 100) }
     };
   }
 
@@ -4185,6 +4486,7 @@
       drawImageLayer(ctx, data);
     } else if (isType(data, "TileSet")) {
       drawTileSet(ctx, data);
+      drawLabels(ctx, data.overlayLabels || []);
     } else if (isType(data, "CellSet")) {
       drawCellSet(ctx, data);
     } else if (isType(data, "Shape")) {
@@ -4366,17 +4668,17 @@
 
   function drawTileSet(ctx, tileSet) {
     if (!tileSet?.tiles?.length) return;
-    const image = tileSet.image;
-    const source = rasterCanvasFromPixels(image) || cachedRasterImage(image?.dataUrl);
-    const ready = source && ((source.complete && source.naturalWidth) || source.width);
-    const sourceWidth = source?.naturalWidth || source?.width || image?.cols || 1;
-    const sourceHeight = source?.naturalHeight || source?.height || image?.rows || 1;
-    const sourceScaleX = sourceWidth / Math.max(1, image?.cols || sourceWidth);
-    const sourceScaleY = sourceHeight / Math.max(1, image?.rows || sourceHeight);
-
     ctx.save();
     ctx.globalCompositeOperation = canvasBlendMode(tileSet.blendMode);
     (tileSet.tiles || []).forEach((tile, index) => {
+      const image = tile.image || tileSet.image;
+      const source = rasterCanvasFromPixels(image) || cachedRasterImage(image?.dataUrl);
+      const ready = source && ((source.complete && source.naturalWidth) || source.width);
+      const sourceWidth = source?.naturalWidth || source?.width || image?.cols || 1;
+      const sourceHeight = source?.naturalHeight || source?.height || image?.rows || 1;
+      const sourceScaleX = sourceWidth / Math.max(1, image?.cols || sourceWidth);
+      const sourceScaleY = sourceHeight / Math.max(1, image?.rows || sourceHeight);
+
       ctx.save();
       ctx.globalAlpha = (tile.opacity ?? 1) * (tileSet.opacity ?? 1);
       ctx.imageSmoothingEnabled = tile.pixelMode === "Smooth";
@@ -4392,16 +4694,23 @@
         const drawSy = hasTint ? 0 : sy * sourceScaleY;
         const drawSw = hasTint ? Math.max(1, Math.round(sw * sourceScaleX)) : sw * sourceScaleX;
         const drawSh = hasTint ? Math.max(1, Math.round(sh * sourceScaleY)) : sh * sourceScaleY;
+        const fit = tile.fit || "Stretch";
+        const dest = tileFitRect(tile, drawSw, drawSh, fit);
+        if (fit !== "Stretch") {
+          ctx.beginPath();
+          ctx.rect(tile.x, tile.y, tile.w, tile.h);
+          ctx.clip();
+        }
         ctx.drawImage(
           drawTarget,
           drawSx,
           drawSy,
           drawSw,
           drawSh,
-          tile.x,
-          tile.y,
-          tile.w,
-          tile.h
+          dest.x,
+          dest.y,
+          dest.w,
+          dest.h
         );
       } else {
         ctx.fillStyle = index % 2 ? "rgba(69, 108, 124, 0.16)" : "rgba(83, 107, 87, 0.16)";
@@ -4410,6 +4719,21 @@
       ctx.restore();
     });
     ctx.restore();
+  }
+
+  function tileFitRect(tile, sourceW, sourceH, fit) {
+    if (fit === "Stretch") return { x: tile.x, y: tile.y, w: tile.w, h: tile.h };
+    const scale = fit === "Contain"
+      ? Math.min(tile.w / Math.max(1, sourceW), tile.h / Math.max(1, sourceH))
+      : Math.max(tile.w / Math.max(1, sourceW), tile.h / Math.max(1, sourceH));
+    const w = sourceW * scale;
+    const h = sourceH * scale;
+    return {
+      x: tile.x + (tile.w - w) / 2,
+      y: tile.y + (tile.h - h) / 2,
+      w,
+      h
+    };
   }
 
   function tintedTileCanvas(source, sourceScaleX, sourceScaleY, tile) {
@@ -4562,7 +4886,7 @@
       ].join("");
     }
     if (isType(data, "Image")) return svgImage(data);
-    if (isType(data, "TileSet")) return svgTileSet(data);
+    if (isType(data, "TileSet")) return [svgTileSet(data), ...(data.overlayLabels || []).map(svgLabel)].join("");
     if (isType(data, "CellSet")) return svgCellSet(data);
     if (isType(data, "Shape")) return svgShape(data, 0.72);
     if (isType(data, "PointSet")) {
@@ -5192,7 +5516,12 @@
       maxX: data.originX + data.width,
       maxY: data.originY + data.height
     };
-    if (isType(data, "TileSet")) return data.bounds || tileSetBounds(data.tiles || []);
+    if (isType(data, "TileSet")) {
+      return unionBounds([
+        data.bounds || tileSetBounds(data.tiles || []),
+        boundsFromPoints(data.overlayLabels || [])
+      ]);
+    }
     if (isType(data, "CellSet")) return data.bounds || cellSetBounds(data.cells || []);
     if (isType(data, "Shape")) return data.bounds || boundsFromPoints((data.boundary || []).concat(data.fill || []));
     if (isType(data, "PointSet")) return unionBounds([boundsFromPoints(data.points || []), contentBounds(data.sourceShape)]);
@@ -6276,7 +6605,16 @@
     return {
       ...tileSet,
       tiles,
-      bounds: tileSetBounds(tiles)
+      bounds: tileSetBounds(tiles),
+      overlayLabels: (tileSet.overlayLabels || []).map((label) => ({
+        ...mapper(label),
+        text: label.text,
+        size: label.size,
+        color: label.color,
+        a: label.a,
+        align: label.align,
+        rotation: label.rotation
+      }))
     };
   }
 
@@ -6482,6 +6820,7 @@
   function tileSetFingerprint(tileSet) {
     const image = tileSet?.image || {};
     const tileSample = (tileSet?.tiles || []).slice(0, 240).map((tile) => [
+      tileImageKey(tile, image),
       round(tile.sx || 0),
       round(tile.sy || 0),
       round(tile.sw || 0),
@@ -6490,9 +6829,15 @@
       round(tile.y || 0),
       round(tile.w || 0),
       round(tile.h || 0),
+      tile.fit || "",
       tile.pixelMode || ""
     ].join(",")).join("|");
     return `tiles:${image.cols || 0}x${image.rows || 0}:${pixelFingerprint(image.pixels)}:${tileSet?.tiles?.length || 0}:${tileSample}`;
+  }
+
+  function tileImageKey(tile, fallbackImage) {
+    const image = tile?.image || fallbackImage || {};
+    return image === fallbackImage ? "base" : rasterImageKey(image);
   }
 
   function cellSetFingerprint(cellSet) {
@@ -6816,6 +7161,9 @@
     createNoiseField,
     createValue,
     createRandomArray,
+    noiseSelector,
+    rowColumnSelector,
+    gradientSelector,
     createColor,
     mathValue,
     scaleShape,
@@ -6846,6 +7194,7 @@
     matrixRepeatData,
     gridSliceImage,
     shuffleTiles,
+    mixTiles,
     stretchTiles,
     traceSlice,
     shuffleCells,

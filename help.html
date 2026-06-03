@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nomadic Graphics Node Manual</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --paper: #f8f5eb;
+        --ink: #22211d;
+        --muted: #6f7168;
+        --line: #d9d5c8;
+        --panel: #fffdf5;
+        --moss: #5b745c;
+        --blue: #476f7f;
+        --field: #ebe7da;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--paper);
+        font-family: "IBM Plex Mono", "Noto Sans SC", Consolas, monospace;
+        font-weight: 400;
+        line-height: 1.55;
+      }
+
+      .manual-shell {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 40px 28px 64px;
+      }
+
+      header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 24px;
+        align-items: start;
+        padding-bottom: 28px;
+        border-bottom: 2px solid var(--ink);
+      }
+
+      h1, h2, h3, p { margin: 0; }
+
+      h1 {
+        font-size: clamp(32px, 6vw, 76px);
+        font-weight: 700;
+        line-height: 0.95;
+        letter-spacing: 0;
+      }
+
+      h1 .zh,
+      h2 .zh,
+      .zh-copy {
+        font-family: "Noto Sans SC", sans-serif;
+      }
+
+      h1 .zh {
+        font-weight: 900;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        margin-top: 42px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--line);
+        color: var(--moss);
+        font-weight: 700;
+        font-size: 24px;
+      }
+
+      h3 {
+        font-weight: 700;
+        font-size: 15px;
+      }
+
+      .eyebrow {
+        margin-bottom: 10px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .intro {
+        max-width: 760px;
+        margin-top: 18px;
+        color: var(--muted);
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        padding-top: 8px;
+      }
+
+      .actions a,
+      .actions button {
+        display: inline-grid;
+        place-items: center;
+        height: 34px;
+        min-width: 62px;
+        padding: 0 12px;
+        border: 1px solid var(--ink);
+        border-radius: 4px;
+        color: var(--ink);
+        background: var(--field);
+        font: inherit;
+        font-size: 12px;
+        line-height: 1;
+        text-decoration: none;
+        cursor: pointer;
+        appearance: none;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 24px;
+      }
+
+      .summary-card,
+      .node-card {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+      }
+
+      .summary-card {
+        padding: 14px;
+      }
+
+      .summary-card strong {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--blue);
+      }
+
+      .summary-card p {
+        color: var(--muted);
+        font-family: "Noto Sans SC", "IBM Plex Mono", sans-serif;
+        font-size: 13px;
+      }
+
+      .node-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 16px;
+      }
+
+      .node-card {
+        display: grid;
+        gap: 12px;
+        padding: 14px;
+        break-inside: avoid;
+      }
+
+      .node-title {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .node-title span {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .bilingual {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .lang-label {
+        margin-bottom: 4px;
+        color: var(--blue);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .copy {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .zh-copy {
+        font-weight: 400;
+      }
+
+      .ports,
+      .widgets {
+        display: grid;
+        gap: 5px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 23px;
+        padding: 2px 7px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: #f1eee4;
+        color: var(--ink);
+        font-size: 11px;
+      }
+
+      .recipes {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 16px;
+      }
+
+      .recipe {
+        padding: 14px;
+        border-left: 4px solid var(--moss);
+        background: rgba(255, 253, 245, 0.72);
+      }
+
+      .recipe p {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .recipe p:last-child {
+        font-family: "Noto Sans SC", sans-serif;
+      }
+
+      footer {
+        margin-top: 44px;
+        padding-top: 18px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      @media (max-width: 820px) {
+        header,
+        .summary-grid,
+        .node-grid,
+        .bilingual,
+        .recipes {
+          grid-template-columns: 1fr;
+        }
+
+        .actions {
+          justify-content: flex-start;
+        }
+      }
+
+      @media print {
+        body { background: #fff; }
+        .manual-shell { max-width: none; padding: 20mm 14mm; }
+        .actions { display: none; }
+        h1 { font-size: 42px; }
+        h2 { page-break-after: avoid; }
+        .node-grid { grid-template-columns: 1fr; }
+        .node-card, .summary-card, .recipe { background: #fff; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="manual-shell">
+      <header>
+        <div>
+          <p class="eyebrow">Nomadic Graphics / Help</p>
+          <h1><span>Node Manual</span><br /><span class="zh">节点说明书</span></h1>
+          <p class="intro">
+            This manual explains every node currently available in Nomadic Graphics. It is bilingual and print-ready.
+            本说明书覆盖当前 Nomadic Graphics 的全部节点，适合边做边查，也可以直接打印为 PDF。
+          </p>
+        </div>
+        <nav class="actions" aria-label="Manual actions">
+          <a href="index.html">Back</a>
+          <button type="button" onclick="window.print()">Print / PDF</button>
+        </nav>
+      </header>
+
+      <section aria-labelledby="workflow-title">
+        <h2 id="workflow-title">Workflow / <span class="zh">基本流程</span></h2>
+        <div class="summary-grid">
+          <article class="summary-card">
+            <strong>1. Input / 输入</strong>
+            <p>Start from text, shapes, SVG, image, fields, or random points. 先从文字、形状、SVG、图像、场或随机点开始。</p>
+          </article>
+          <article class="summary-card">
+            <strong>2. Structure + Transform / 结构与变形</strong>
+            <p>Convert, slice, repeat, distort, mix, stretch, and label data. 对数据做转换、切片、重复、扰动、混合、拉伸和标记。</p>
+          </article>
+          <article class="summary-card">
+            <strong>3. Material + Output / 材质与输出</strong>
+            <p>Apply color, distress, weathering, stack layers, preview, then export SVG or PNG. 加颜色和旧化，叠层预览后导出。</p>
+          </article>
+        </div>
+      </section>
+
+      <section aria-labelledby="data-title">
+        <h2 id="data-title">Data Types / <span class="zh">数据类型</span></h2>
+        <div class="pill-row">
+          <span class="pill">image 图像</span>
+          <span class="pill">shape 形状</span>
+          <span class="pill">points 点集</span>
+          <span class="pill">field 灰度场</span>
+          <span class="pill">traces 线稿路径</span>
+          <span class="pill">artifact 视觉结果</span>
+          <span class="pill">layers 图层组</span>
+          <span class="pill">tiles 图像切片</span>
+          <span class="pill">cells 线稿切片</span>
+          <span class="pill">selector 选择器</span>
+          <span class="pill">value 数值</span>
+          <span class="pill">array 数组</span>
+          <span class="pill">color 颜色</span>
+        </div>
+      </section>
+
+      <section aria-labelledby="recipes-title">
+        <h2 id="recipes-title">Suggested Setups / <span class="zh">推荐搭法</span></h2>
+        <div class="recipes">
+          <article class="recipe">
+            <h3>Image slicing / 图像切片</h3>
+            <p>Image Input -> Grid Slice -> Shuffle Tiles or Stretch Tiles -> Preview.</p>
+            <p>图像输入后接 Grid Slice，再接 Shuffle Tiles 或 Stretch Tiles，最后 Preview。</p>
+          </article>
+          <article class="recipe">
+            <h3>Two-image collage / 双图混合</h3>
+            <p>Two Image Inputs -> two Grid Slice nodes -> Mix Tiles -> Preview. Add a Selector to control where B appears.</p>
+            <p>两张图分别切片后进 Mix Tiles；接入 Selector 可以控制 B 图出现的位置。</p>
+          </article>
+          <article class="recipe">
+            <h3>Labelled slices / 带字切片</h3>
+            <p>Grid Slice or Trace Slice -> Slice Labels -> Layer Stack or Image Weathering -> Preview.</p>
+            <p>切片后接 Slice Labels，再接 Layer Stack 或 Image Weathering，保留文字层。</p>
+          </article>
+          <article class="recipe">
+            <h3>Vector texture / 矢量纹理</h3>
+            <p>Text Shape -> Distance Field -> Contour -> Ink Distress -> Preview or SVG export.</p>
+            <p>文字形状转场，再提取等高线，接 Ink Distress 后可导出 SVG。</p>
+          </article>
+        </div>
+      </section>
+
+      <div id="manualContent"></div>
+
+      <footer>
+        Nomadic Graphics Node Manual. Generated from the current node library structure. Last updated: 2026-06-03.
+      </footer>
+    </main>
+
+    <script>
+      const groups = [
+        {
+          name: "Input",
+          zh: "输入",
+          nodes: [
+            ["Text Shape", "Creates a sampled glyph shape.", "生成可采样的文字形状。", "-", "shape", ["Text", "Font", "Size", "Body"]],
+            ["Circle Shape", "Creates a true circular vector shape.", "生成圆形矢量形状。", "-", "shape", ["Radius", "Segments", "Body"]],
+            ["Rectangle Shape", "Creates a rectangular vector field.", "生成矩形矢量形状。", "-", "shape", ["Width", "Height", "Corner Radius", "Body"]],
+            ["Polygon Shape", "Creates a regular polygon vector field.", "生成规则多边形矢量形状。", "-", "shape", ["Sides", "Radius", "Body"]],
+            ["Random Points", "Seeds a point set without a parent shape.", "直接生成随机点集，不需要输入形状。", "-", "points", ["Distribution", "Count", "Spread"]],
+            ["Noise Field", "Creates a scalar noise field for contouring.", "生成噪声灰度场，用于遮罩或等高线。", "-", "field", ["Noise", "Scale", "Contrast"]],
+            ["SVG Input", "Loads or pastes SVG path data as a sampled shape.", "载入或粘贴 SVG 路径，并转为可采样形状。", "-", "shape", ["Load SVG", "Path", "Body"]],
+            ["Image Input", "Loads an image as a visible image layer.", "载入图像，作为可预览、可切片的图像源。", "-", "image", ["Load Image", "Blend", "Scale", "Opacity"]],
+            ["Image Field", "Loads an image as a scalar field.", "载入图像并转成灰度场，适合做轮廓和遮罩。", "-", "field", ["Load Image", "Channel", "Invert", "Scale", "Contrast"]]
+          ]
+        },
+        {
+          name: "Structure",
+          zh: "结构",
+          nodes: [
+            ["Scale Shape", "Rescales and recenters a shape before sampling.", "在采样前缩放并居中形状。", "Shape: shape; Scale: value optional", "shape", ["Mode", "Scale"]],
+            ["Mirror", "Mirrors visual data across the canvas center.", "沿画布中心镜像图像、形状、路径、切片或图层。", "image, shape, points, field, traces, artifact, layers, tiles, cells", "same as input", ["Axis"]],
+            ["Rotate Mirror", "Builds radial mirrored copies around the canvas center.", "围绕画布中心生成旋转镜像副本。", "shape, points, traces, artifact, layers", "layers", ["Copies", "Rotation", "Alternate"]],
+            ["Sample Shape", "Samples a shape into usable growth points.", "把形状采样成点集，供生长、标记或实例化使用。", "shape", "points", ["Mode", "Count"]],
+            ["Instance On Points", "Places a shape instance on every point.", "把一个形状复制到点集的每个点上。", "Points: points; Shape: shape", "layers", ["Scale", "Jitter", "Opacity"]],
+            ["Scanline Field", "Cuts a shape into survey-like scanline traces.", "把形状切成扫描线风格的路径。", "shape", "traces", ["Direction", "Spacing", "Jitter", "Gaps"]],
+            ["Distance Field", "Converts shape proximity into a scalar field.", "根据形状距离生成灰度场。", "shape", "field", ["Spread"]],
+            ["Contour", "Extracts contour traces from a field.", "从灰度场提取等高线。", "field", "traces", ["Levels"]],
+            ["Offset Contour", "Echoes a shape boundary into offset contour rings.", "沿形状边界生成偏移轮廓环。", "shape", "traces", ["Rings", "Step", "Drift"]]
+          ]
+        },
+        {
+          name: "Utility",
+          zh: "工具转换",
+          nodes: [
+            ["Trace To Shape", "Turns closed traces into a fillable shape.", "把闭合路径转回可填充形状。", "traces", "shape", ["Close Gap"]],
+            ["Trace To Points", "Samples trace paths into points only.", "把路径按间距采样成点。", "traces", "points", ["Spacing", "Limit"]],
+            ["Image To Field", "Converts an image layer into a scalar field.", "把图像转成灰度场。", "image", "field", ["Channel", "Invert", "Contrast"]],
+            ["Shape To TraceSet", "Converts a shape body into usable trace paths.", "把形状主体转成可绘制路径。", "shape", "traces", ["Mode", "Density"]],
+            ["Field Mask", "Fills high-value regions from a scalar field.", "按灰度场阈值生成填充图形。", "Field: field; Color: color optional", "artifact", ["Mode", "Threshold", "Density"]],
+            ["Flatten Layers", "Bakes a layer stack into a single visual artifact.", "把图层组烘焙成单个视觉结果。", "layers", "artifact", []],
+            ["Layers To TraceSet", "Extracts drawable traces from visible layers.", "从可见图层提取路径。", "layers", "traces", ["Field Levels"]],
+            ["Rasterize Layers", "Samples visible layers back into a scalar field.", "把可见图层重新栅格化为灰度场。", "layers", "field", ["Detail", "Sensitivity"]],
+            ["Cells To TraceSet", "Flattens sliced geometry cells back into trace paths.", "把线稿切片重新压平成路径集合。", "cells", "traces", []]
+          ]
+        },
+        {
+          name: "Control",
+          zh: "控制",
+          nodes: [
+            ["Invert Field", "Inverts scalar field values.", "反转灰度场数值。", "field", "field", ["Mix"]]
+          ]
+        },
+        {
+          name: "Selector",
+          zh: "选择器",
+          nodes: [
+            ["Noise Selector", "Selects slices with reusable procedural noise.", "用程序噪声选择部分切片，可接到 Mix Tiles 或 Stretch Tiles。", "-", "selector", ["Threshold", "Scale", "Seed"]],
+            ["Row/Column Selector", "Selects slices by row, column, checkerboard, or border rules.", "按行、列、棋盘格、边缘或中心规则选择切片。", "-", "selector", ["Mode", "Period", "Offset"]],
+            ["Gradient Selector", "Selects slices across horizontal, vertical, or radial gradients.", "按水平、垂直或径向渐变选择切片。", "-", "selector", ["Axis", "Invert", "Threshold", "Softness"]]
+          ]
+        },
+        {
+          name: "Combine",
+          zh: "合成",
+          nodes: [
+            ["Shape Boolean", "Combines two shapes into a new sampled shape.", "对两个形状做并集、交集、相减或差异运算。", "A: shape; B: shape", "shape", ["Mode", "Detail"]],
+            ["Field Boolean", "Combines two scalar fields as data.", "对两个灰度场做最大、最小、相减或差异运算。", "A: field; B: field", "field", ["Mode"]]
+          ]
+        },
+        {
+          name: "Transform",
+          zh: "变形处理",
+          nodes: [
+            ["Growth", "Grows traces from sampled points.", "从点集长出线条路径。", "PointSet: points; Amount: value optional; Length: value optional", "traces", ["Mode", "Amount", "Length"]],
+            ["Noise Displace", "Disturbs traces with procedural noise.", "用噪声扰动路径。", "TraceSet: traces; Strength: value optional", "traces", ["Noise", "Strength", "Scale"]],
+            ["Sine Wave", "Bends visual data with a repeating wave.", "用正弦波弯曲视觉数据。", "shape, points, traces, artifact, layers", "same as input", ["Axis", "Amplitude", "Wavelength", "Phase"]],
+            ["Smooth", "Softens hard trace segments into smoother paths.", "平滑路径折线。", "traces", "traces", ["Amount", "Passes"]],
+            ["Curve Tension", "Changes trace curvature and flow tension.", "调整路径弯曲张力和下垂感。", "traces", "traces", ["Tension", "Sag"]],
+            ["Wind", "Bends existing traces through a directional force.", "用方向力推动并弯曲路径。", "traces", "traces", ["Force", "Angle"]],
+            ["Erode", "Breaks and roughens traces.", "打断并粗糙化路径。", "traces", "traces", ["Amount"]],
+            ["Dither", "Applies real raster dithering to images, tile sets, or layer stacks.", "给图像、切片或图层做真实栅格抖动。", "image, tiles, layers", "image, layers", ["Mode", "Threshold", "Scale", "Mix"]],
+            ["Repeat", "Repeats visual geometry into a layer set.", "把视觉数据按步距重复成图层组。", "shape, points, traces, artifact, layers", "layers", ["Count", "Step X", "Step Y", "Scale", "Fade"]],
+            ["Matrix Repeat", "Copies visual data across a measured grid.", "把视觉数据复制到矩阵网格中。", "shape, points, traces, artifact, layers", "layers", ["Columns", "Rows", "Step X", "Step Y", "Scale", "Jitter", "Fade"]],
+            ["Grid Slice", "Cuts an image into movable raster tiles.", "把图像切成可移动的栅格切片。", "image", "tiles", ["Mode", "Columns", "Rows", "Gap", "Crop Padding", "Jitter", "Seed"]],
+            ["Shuffle Tiles", "Reorders image tiles without vectorizing the image.", "重排图像切片，不把图像矢量化。", "tiles", "tiles", ["Mode", "Amount", "Seed"]],
+            ["Mix Tiles", "Interleaves slices from two image tile sets.", "混合两组图像切片，可用 Selector 控制替换区域。", "Tiles A: tiles/layers; Tiles B: tiles/layers; Selector: selector optional", "tiles", ["Mode", "Layout", "Fit", "Amount", "Seed"]],
+            ["Stretch Tiles", "Stretches selected image tiles into smeared raster strips.", "把选中的图像切片拉伸成拖影条，可用 Selector 精确控制。", "TileSet: tiles; Selector: selector optional", "tiles", ["Axis", "Anchor", "Pixel Mode", "Amount", "Chance", "Seed"]],
+            ["Trace Slice", "Cuts trace geometry into movable map cells.", "把路径线稿切成可移动的几何格子。", "traces", "cells", ["Mode", "Columns", "Rows", "Gap", "Clip Padding", "Jitter", "Seed"]],
+            ["Shuffle Cells", "Reorders sliced trace cells like displaced map fragments.", "重排线稿切片，形成地图碎片般的错位。", "cells", "cells", ["Mode", "Amount", "Seed"]],
+            ["Stretch Cells", "Stretches selected trace cells and the lines inside them.", "拉伸线稿切片和其中的线条。", "cells", "cells", ["Axis", "Anchor", "Amount", "Chance", "Seed"]]
+          ]
+        },
+        {
+          name: "Material",
+          zh: "材质",
+          nodes: [
+            ["Image Weathering", "Ages raster images, tile sets, or labeled layers with paper, photocopy, toner, and transfer artifacts.", "给图像、切片或带标签图层添加纸张、复印、墨粉和转印旧化效果。", "image, tiles, layers", "image, layers", ["Mode", "Tone", "Ink Color", "Paper Color", "Tone Amount", "Exposure", "Contrast", "Grain", "Dust", "Paper", "Fade", "Seed"]],
+            ["Graffiti Stroke", "Redraws visual data as soft hand-made marker ink.", "把视觉数据重绘成柔软手绘马克笔墨迹。", "image, shape, traces, artifact, layers", "image", ["Mode", "Color", "Width", "Wobble", "Repeat", "Bleed", "Grain", "Softness", "Seed"]]
+          ]
+        },
+        {
+          name: "Style",
+          zh: "样式",
+          nodes: [
+            ["Color", "Outputs a reusable ink color.", "输出可复用颜色。", "-", "color", ["Palette", "Seed", "Opacity"]],
+            ["Fill Area", "Fills a shape, field, closed trace set, or layer set.", "填充形状、灰度场、闭合路径或图层。", "In: shape/field/traces/layers; Color: color optional", "artifact, layers", ["Mode", "Density", "Threshold"]],
+            ["Stroke Style", "Changes trace width, opacity, and ink color.", "修改路径线宽、不透明度和颜色。", "TraceSet: traces; Color: color optional; Width: value optional", "traces", ["Width", "Opacity"]],
+            ["Ink Distress", "Degrades geometry into rough low-quality print ink.", "把几何图形处理成粗糙低保真印刷墨迹。", "shape, field, traces, artifact, layers", "artifact, layers", ["Mode", "Threshold", "Block Size", "Distress", "Grain", "Bleed", "Pressure", "Seed"]],
+            ["Random Color", "Assigns vivid palette colors to raster, tile, cell, stroke, and fill data.", "给图像、切片、线稿、填充或图层随机分配色彩。", "image, tiles, cells, shape, traces, artifact, layers", "same as input", ["Target", "Palette", "Variation", "Seed", "Opacity"]],
+            ["Random Size", "Assigns varied scale to points, layers, and visual data.", "给点、图层或视觉数据分配随机尺寸。", "shape, points, traces, artifact, layers", "same as input", ["Min", "Max", "Seed"]],
+            ["Point Labels", "Places number strings at point locations.", "在点的位置放置数字或数组文本。", "Points: points; Array: array optional; Color: color optional", "artifact", ["Size", "Offset", "Limit", "Opacity"]],
+            ["Layer Labels", "Places array values on every layer in a repeated stack.", "在重复图层上放置数组文本。", "Layers: layers; Array: array optional; Color: color optional", "layers", ["Align", "Size", "Padding", "Color Mode", "Palette", "Seed", "Opacity"]],
+            ["Slice Labels", "Maps text characters onto existing image tiles or trace cells.", "把文字映射到图像切片或线稿切片上。", "Slices: tiles/cells; Array: array optional; Color: color optional", "layers", ["Text", "Mapping", "Fit", "Font", "Size", "Padding", "Offset X", "Offset Y", "Rotation", "Color Mode", "Palette", "Seed", "Opacity"]]
+          ]
+        },
+        {
+          name: "Math",
+          zh: "数学",
+          nodes: [
+            ["Random Array", "Outputs a reusable array of random number strings.", "输出可复用的随机数字字符串数组。", "-", "array", ["Count", "Digits", "Seed"]],
+            ["Value", "Outputs a reusable numeric value.", "输出可复用数值。", "-", "value", ["Value"]],
+            ["Add", "Adds two values.", "两个数相加。", "A: value; B: value optional", "value", ["Fallback B"]],
+            ["Subtract", "Subtracts B from A.", "A 减 B。", "A: value; B: value optional", "value", ["Fallback B"]],
+            ["Multiply", "Multiplies two values.", "两个数相乘。", "A: value; B: value optional", "value", ["Fallback B"]],
+            ["Divide", "Divides A by B.", "A 除以 B。", "A: value; B: value optional", "value", ["Fallback B"]]
+          ]
+        },
+        {
+          name: "Output",
+          zh: "输出",
+          nodes: [
+            ["Layer Stack", "Combines two visual data streams before preview.", "把两路视觉数据合成为一个图层组。", "A: preview data; B: preview data", "layers", ["Opacity A", "Opacity B", "Blend B"]],
+            ["Preview", "Renders the connected data object.", "渲染接入的数据对象，并负责 SVG / PNG 导出尺寸。", "image, shape, points, field, traces, artifact, layers, tiles, cells", "-", ["Background", "Background Color", "Grid", "Canvas Size", "Width", "Height", "Fit", "Export Scale"]]
+          ]
+        }
+      ];
+
+      const content = document.getElementById("manualContent");
+      const pillText = (label) => label ? `<span class="pill">${label}</span>` : "";
+
+      groups.forEach((group) => {
+        const section = document.createElement("section");
+        section.innerHTML = `
+          <h2>${group.name} / <span class="zh">${group.zh}</span></h2>
+          <div class="node-grid">
+            ${group.nodes.map((node) => `
+              <article class="node-card">
+                <div class="node-title">
+                  <h3>${node[0]}</h3>
+                  <span>${group.name}</span>
+                </div>
+                <div class="bilingual">
+                  <div>
+                    <div class="lang-label">EN</div>
+                    <p class="copy">${node[1]}</p>
+                  </div>
+                  <div>
+                    <div class="lang-label">中文</div>
+                    <p class="copy zh-copy">${node[2]}</p>
+                  </div>
+                </div>
+                <div class="ports">
+                  <div><strong>Input / 输入:</strong> ${node[3]}</div>
+                  <div><strong>Output / 输出:</strong> ${node[4]}</div>
+                </div>
+                <div class="widgets">
+                  <strong>Controls / 参数:</strong>
+                  <div class="pill-row">${node[5].length ? node[5].map(pillText).join("") : '<span class="pill">none 无</span>'}</div>
+                </div>
+              </article>
+            `).join("")}
+          </div>
+        `;
+        content.appendChild(section);
+      });
+    </script>
+  </body>
+</html>

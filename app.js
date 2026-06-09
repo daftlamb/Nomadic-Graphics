@@ -35,6 +35,7 @@ const DATA_TYPES = {
   field: "Field",
   traces: "TraceSet",
   artifact: "Artifact",
+  analysis: "Analysis",
   layers: "LayerSet",
   tiles: "TileSet",
   cells: "CellSet",
@@ -142,6 +143,24 @@ const nodeGroups = [
         ]
       },
       {
+        type: "nomadic/source/gpt_image",
+        title: "GPT Image",
+        output: "image",
+        description: "Generates a raster image through a local OpenAI-compatible proxy.",
+        widgets: [
+          ["button", "Generate"],
+          ["text", "API URL", "https://yq66.ai"],
+          ["text", "Prompt", "A stark black and white editorial poster texture, abstract topographic lines, printed ink grain"],
+          ["combo", "Model", "gpt-image-2", ["gpt-image-2", "gpt-image-1", "gpt-image-1-mini", "gpt-image-1.5"]],
+          ["combo", "Size", "1024x1024", ["1024x1024", "1536x1024", "1024x1536", "2048x2048", "2048x1152", "3840x2160", "2160x3840", "Auto"]],
+          ["combo", "Quality", "Medium", ["Auto", "Low", "Medium", "High"]],
+          ["combo", "Background", "Opaque", ["Auto", "Opaque", "Transparent"]],
+          ["combo", "Blend", "Normal", ["Normal", "Multiply", "Screen", "Overlay", "Darken", "Lighten"]],
+          ["slider", "Scale", 100, 40, 260],
+          ["slider", "Opacity", 100, 0, 100]
+        ]
+      },
+      {
         type: "nomadic/source/image_field_input",
         title: "Image Field",
         output: "field",
@@ -152,6 +171,102 @@ const nodeGroups = [
           ["combo", "Invert", "Off", ["Off", "On"]],
           ["slider", "Scale", 100, 40, 260],
           ["slider", "Contrast", 62, 10, 100]
+        ]
+      }
+    ]
+  },
+  {
+    name: "AI",
+    nodes: [
+      {
+        type: "nomadic/ai/vision_judge",
+        title: "Vision Judge",
+        input: "image",
+        output: "analysis",
+        description: "Reads an image and returns structured semantic design notes.",
+        widgets: [
+          ["button", "Analyze"],
+          ["text", "API URL", "https://yq66.ai"],
+          ["text", "Vision Model", "gpt-4o-mini"],
+          ["text", "Question", "Describe the image for graphic design: key subjects, regions, visual texture, and patch ideas."],
+          ["combo", "Detail", "Low", ["Low", "High"]]
+        ]
+      },
+      {
+        type: "nomadic/ai/semantic_mask",
+        title: "Semantic Mask",
+        inputs: [
+          { name: "Image", type: "image" },
+          { name: "Analysis", type: "analysis", optional: true }
+        ],
+        output: "field",
+        description: "Finds a named region in an image and converts it into a soft mask field.",
+        widgets: [
+          ["button", "Find Region"],
+          ["text", "API URL", "https://yq66.ai"],
+          ["text", "Vision Model", "gpt-4o-mini"],
+          ["text", "Target", "main subject"],
+          ["slider", "Feather", 12, 0, 40],
+          ["slider", "Strength", 100, 0, 100],
+          ["combo", "Detail", "Low", ["Low", "High"]]
+        ]
+      },
+      {
+        type: "nomadic/ai/box_mask",
+        title: "Box Mask",
+        input: "image",
+        output: "field",
+        description: "Creates a precise rectangular mask from normalized image coordinates.",
+        widgets: [
+          ["slider", "X", 25, 0, 100],
+          ["slider", "Y", 20, 0, 100],
+          ["slider", "Width", 50, 1, 100],
+          ["slider", "Height", 60, 1, 100],
+          ["slider", "Feather", 4, 0, 40],
+          ["slider", "Strength", 100, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/ai/roboflow_sam2",
+        title: "Roboflow SAM2",
+        inputs: [
+          { name: "Image", type: "image" },
+          { name: "Box", type: "field", optional: true }
+        ],
+        output: "field",
+        description: "Uses Roboflow SAM2 to turn a box prompt into a precise segmentation mask.",
+        widgets: [
+          ["button", "Segment"],
+          ["text", "API URL", "https://serverless.roboflow.com"],
+          ["combo", "Model", "hiera_small", ["hiera_tiny", "hiera_small", "hiera_b_plus", "hiera_large"]],
+          ["slider", "X", 25, 0, 100],
+          ["slider", "Y", 20, 0, 100],
+          ["slider", "Width", 50, 1, 100],
+          ["slider", "Height", 60, 1, 100],
+          ["slider", "Feather", 3, 0, 28],
+          ["slider", "Strength", 100, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/ai/mobile_sam",
+        title: "Mobile SAM",
+        inputs: [
+          { name: "Image", type: "image" },
+          { name: "Box", type: "field", optional: true }
+        ],
+        output: "field",
+        description: "Runs MobileSAM locally with a box prompt and converts the mask into a field.",
+        widgets: [
+          ["button", "Segment"],
+          ["combo", "Model", "MobileSAM Quant", ["MobileSAM Quant"]],
+          ["slider", "X", 25, 0, 100],
+          ["slider", "Y", 20, 0, 100],
+          ["slider", "Width", 50, 1, 100],
+          ["slider", "Height", 60, 1, 100],
+          ["combo", "Mask Mode", "Largest", ["Largest", "Best", "Union"]],
+          ["slider", "Threshold", 50, 0, 100],
+          ["slider", "Feather", 3, 0, 28],
+          ["slider", "Strength", 100, 0, 100]
         ]
       }
     ]
@@ -986,6 +1101,15 @@ const nodeDefs = new Map(nodeGroups.flatMap((group) => group.nodes.map((node) =>
 const PATCH_STORAGE_KEY = "nomadic-graphics.patch.v1";
 const THEME_STORAGE_KEY = "nomadic-graphics.theme";
 const PANEL_STATE_STORAGE_KEY = "nomadic-graphics.panels";
+const API_KEY_STORAGE_KEY = "nomadic-graphics.api-key";
+const ROBOFLOW_API_KEY_STORAGE_KEY = "nomadic-graphics.roboflow-api-key";
+const OPENAI_IMAGE_PROXY_URL = "http://127.0.0.1:8787/openai/image";
+const OPENAI_CHAT_PROXY_URL = "http://127.0.0.1:8787/openai/chat";
+const ROBOFLOW_SAM2_PROXY_URL = "http://127.0.0.1:8787/roboflow/sam2";
+const MOBILE_SAM_ENCODER_URL = "vendor/mobilesam/mobilesam.encoder.onnx";
+const MOBILE_SAM_DECODER_URL = "vendor/mobilesam/mobilesam.decoder.quant.onnx";
+const MOBILE_SAM_ORT_URL = "vendor/ort/ort.wasm.min.js";
+const MOBILE_SAM_WASM_PATH = "vendor/ort/";
 const UNDO_LIMIT = 80;
 const LINK_INSERT_HIT_TARGET_PX = 24;
 const LINK_DROP_HIT_TARGET_PX = 46;
@@ -1012,7 +1136,9 @@ const state = {
   undoTimer: null,
   lastUndoSnapshot: "",
   isRestoring: false,
-  draggingNodeForInsert: null
+  draggingNodeForInsert: null,
+  openaiApiKey: null,
+  mobileSamRuntime: null
 };
 
 const graphCanvasElement = document.querySelector("#graphCanvas");
@@ -1437,6 +1563,65 @@ function runNode(def, inputs, props) {
       blend: props.blend,
       scale: props.scale,
       opacity: props.opacity
+    });
+  }
+  if (def.type === "nomadic/source/gpt_image") {
+    const layer = NomadicGeometry.createImageLayer({
+      dataUrl: props.image_data_url,
+      pixels: props.image_raster_pixels || props.image_pixels,
+      cols: props.image_raster_cols || props.image_cols,
+      rows: props.image_raster_rows || props.image_rows,
+      originalWidth: props.image_original_width,
+      originalHeight: props.image_original_height,
+      label: props.image_label || "GPT Image",
+      blend: props.blend,
+      scale: props.scale,
+      opacity: props.opacity
+    });
+    if (layer) {
+      layer.label = props.image_label || "GPT Image";
+      layer.history = ["GPT Image"];
+      layer.stats = {
+        ...(layer.stats || {}),
+        model: normalizeImageModel(props.model, props.api_url),
+        size: props.size || "1024x1024",
+        quality: props.quality || "Medium"
+      };
+    }
+    return layer;
+  }
+  if (def.type === "nomadic/ai/vision_judge") {
+    return analysisFromProperties(props, "Vision Judge");
+  }
+  if (def.type === "nomadic/ai/semantic_mask") {
+    const analysis = inputs[1] || analysisFromProperties(props, "Semantic Mask");
+    return semanticMaskField(inputs[0], analysis, {
+      target: props.target,
+      feather: props.feather,
+      strength: props.strength
+    });
+  }
+  if (def.type === "nomadic/ai/box_mask") {
+    return boxMaskField(inputs[0], {
+      x: props.x,
+      y: props.y,
+      width: props.width,
+      height: props.height,
+      feather: props.feather,
+      strength: props.strength
+    });
+  }
+  if (def.type === "nomadic/ai/roboflow_sam2") {
+    return roboflowSam2Field(inputs[0], props, {
+      boxField: inputs[1],
+      feather: props.feather,
+      strength: props.strength
+    });
+  }
+  if (def.type === "nomadic/ai/mobile_sam") {
+    return mobileSamFieldFromProperties(inputs[0], props, {
+      feather: props.feather,
+      strength: props.strength
     });
   }
   if (def.type === "nomadic/source/image_field_input") {
@@ -1875,7 +2060,8 @@ function drawNodeStatus(ctx, node, def) {
   const output = node.lastOutput;
   const isBypassed = node.properties.bypass === "On";
   const required = inputDefsFor(def).find((input) => !input.optional);
-  const text = isBypassed ? "bypassed" : output ? `${output.ngType} ready` : required ? `needs ${readableType(required.type)}` : "ready";
+  const asyncStatus = def.type === "nomadic/source/gpt_image" ? node.properties.gpt_status : node.properties.ai_status;
+  const text = isBypassed ? "bypassed" : asyncStatus || (output ? `${output.ngType} ready` : required ? `needs ${readableType(required.type)}` : "ready");
   ctx.save();
   ctx.fillStyle = isBypassed ? "rgba(141, 116, 85, 0.16)" : output ? "rgba(83, 107, 87, 0.12)" : "rgba(155, 96, 72, 0.11)";
   ctx.fillRect(12, node.size[1] - 34, node.size[0] - 24, 24);
@@ -1919,6 +2105,21 @@ function handleNodeButton(node, def, name) {
       });
     });
   }
+  if (def.type === "nomadic/source/gpt_image" && name === "Generate") {
+    generateGptImage(node);
+  }
+  if (def.type === "nomadic/ai/vision_judge" && name === "Analyze") {
+    generateVisionAnalysis(node);
+  }
+  if (def.type === "nomadic/ai/semantic_mask" && name === "Find Region") {
+    generateSemanticMask(node);
+  }
+  if (def.type === "nomadic/ai/roboflow_sam2" && name === "Segment") {
+    generateRoboflowSam2(node);
+  }
+  if (def.type === "nomadic/ai/mobile_sam" && name === "Segment") {
+    generateMobileSam(node);
+  }
 }
 
 function handleNodeWidgetChange(node, def, name) {
@@ -1929,7 +2130,27 @@ function handleNodeWidgetChange(node, def, name) {
     });
     return;
   }
-  if ((def.type !== "nomadic/source/image_input" && def.type !== "nomadic/source/image_field_input") || name !== "Scale") return;
+  if (def.type === "nomadic/source/gpt_image" && ["API URL", "Prompt", "Model", "Size", "Quality", "Background"].includes(name)) {
+    node.properties.gpt_status = "needs Generate";
+    return;
+  }
+  if (def.type === "nomadic/ai/vision_judge" && ["API URL", "Vision Model", "Question", "Detail"].includes(name)) {
+    node.properties.ai_status = "needs Analyze";
+    return;
+  }
+  if (def.type === "nomadic/ai/semantic_mask" && ["API URL", "Vision Model", "Target", "Detail"].includes(name)) {
+    node.properties.ai_status = "needs Find Region";
+    return;
+  }
+  if (def.type === "nomadic/ai/roboflow_sam2" && ["API URL", "Model", "X", "Y", "Width", "Height"].includes(name)) {
+    node.properties.ai_status = "needs Segment";
+    return;
+  }
+  if (def.type === "nomadic/ai/mobile_sam" && ["Model", "X", "Y", "Width", "Height", "Mask Mode"].includes(name)) {
+    node.properties.ai_status = "needs Segment";
+    return;
+  }
+  if ((def.type !== "nomadic/source/image_input" && def.type !== "nomadic/source/image_field_input" && def.type !== "nomadic/source/gpt_image") || name !== "Scale") return;
 }
 
 function loadTextFont(font) {
@@ -2009,6 +2230,1046 @@ function loadImageField(dataUrl) {
     image.onerror = () => resolve({});
     image.src = dataUrl;
   });
+}
+
+async function generateGptImage(node) {
+  const prompt = String(node.properties.prompt || "").trim();
+  if (!prompt) {
+    node.properties.gpt_status = "prompt required";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  const key = await getOpenAIApiKey();
+  if (!key) {
+    node.properties.gpt_status = "API key required";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  node.properties.gpt_status = "generating...";
+  graphCanvas?.setDirty(true, true);
+
+  try {
+    const response = await fetch(OPENAI_IMAGE_PROXY_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`
+      },
+      body: JSON.stringify({
+        prompt,
+        model: normalizeImageModel(node.properties.model, node.properties.api_url),
+        base_url: normalizeApiBaseUrl(node.properties.api_url),
+        size: normalizeOpenAIOption(node.properties.size),
+        quality: normalizeOpenAIOption(node.properties.quality),
+        background: normalizeOpenAIOption(node.properties.background)
+      })
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || payload.message || `HTTP ${response.status}`);
+    if (!payload.image_base64) throw new Error("No image returned");
+
+    const dataUrl = `data:image/png;base64,${payload.image_base64}`;
+    node.properties.image_data_url = dataUrl;
+    const imageData = await loadImageField(dataUrl);
+    Object.assign(node.properties, imageData);
+    node.properties.image_label = `GPT Image ${imageData.image_original_width || ""}x${imageData.image_original_height || ""}`.trim();
+    node.properties.gpt_status = "generated";
+    runGraphOnce();
+    scheduleUndoSnapshot();
+  } catch (error) {
+    console.error(error);
+    node.properties.gpt_status = `error: ${String(error.message || error).slice(0, 48)}`;
+    graphCanvas?.setDirty(true, true);
+  }
+}
+
+function normalizeOpenAIOption(value) {
+  const text = String(value || "auto").trim().toLowerCase();
+  return text || "auto";
+}
+
+function normalizeImageModel(model, apiUrl) {
+  const text = String(model || "").trim();
+  const baseUrl = normalizeApiBaseUrl(apiUrl);
+  if (/yq66\.ai/i.test(baseUrl) && (!text || text === "Image2" || text === "image-2" || /^gpt-image-1/i.test(text))) return "gpt-image-2";
+  return text || "gpt-image-2";
+}
+
+function normalizeApiBaseUrl(value) {
+  const text = String(value || "https://yq66.ai").trim();
+  return text || "https://yq66.ai";
+}
+
+function getOpenAIApiKey() {
+  if (state.openaiApiKey) return Promise.resolve(state.openaiApiKey);
+  const stored = readStoredValue(API_KEY_STORAGE_KEY);
+  if (stored) {
+    state.openaiApiKey = stored;
+    return Promise.resolve(stored);
+  }
+  const key = window.prompt("API key for this device. It will be saved in localStorage and is not saved into the patch.");
+  state.openaiApiKey = String(key || "").trim() || null;
+  if (state.openaiApiKey) writeStoredValue(API_KEY_STORAGE_KEY, state.openaiApiKey);
+  return Promise.resolve(state.openaiApiKey);
+}
+
+function getRoboflowApiKey() {
+  if (state.roboflowApiKey) return Promise.resolve(state.roboflowApiKey);
+  const stored = readStoredValue(ROBOFLOW_API_KEY_STORAGE_KEY);
+  if (stored) {
+    state.roboflowApiKey = stored;
+    return Promise.resolve(stored);
+  }
+  const key = window.prompt("Roboflow API key for this device. It will be saved in localStorage and is not saved into the patch.");
+  state.roboflowApiKey = String(key || "").trim() || null;
+  if (state.roboflowApiKey) writeStoredValue(ROBOFLOW_API_KEY_STORAGE_KEY, state.roboflowApiKey);
+  return Promise.resolve(state.roboflowApiKey);
+}
+
+async function generateVisionAnalysis(node) {
+  runGraphOnce();
+  const image = node.getInputData(0);
+  const dataUrl = imageDataUrlForVision(image);
+  if (!dataUrl) {
+    node.properties.ai_status = "needs image";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  const key = await getOpenAIApiKey();
+  if (!key) {
+    node.properties.ai_status = "API key required";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  node.properties.ai_status = "analyzing...";
+  graphCanvas?.setDirty(true, true);
+
+  const question = String(node.properties.question || "").trim() || "Describe this image for graphic design.";
+  const prompt = [
+    "Return only valid JSON. Do not wrap it in markdown.",
+    "Analyze the image for a node-based graphic design tool.",
+    "Use this schema:",
+    "{\"summary\":\"...\",\"subjects\":[\"...\"],\"regions\":[{\"label\":\"...\",\"confidence\":0.8,\"bbox\":[0,0,1,1],\"polygon\":[[0,0],[1,0],[1,1],[0,1]]}],\"patch_ideas\":[\"...\"],\"prompt_rewrites\":[\"...\"]}",
+    "All bbox and polygon coordinates must be normalized from 0 to 1 relative to the image.",
+    question
+  ].join("\n");
+
+  try {
+    const payload = await requestVisionJson({
+      key,
+      apiUrl: node.properties.api_url,
+      model: node.properties.vision_model,
+      prompt,
+      imageDataUrl: dataUrl,
+      detail: node.properties.detail
+    });
+    node.properties.ai_analysis_json = JSON.stringify(payload);
+    node.properties.ai_status = "analyzed";
+    runGraphOnce();
+    scheduleUndoSnapshot();
+  } catch (error) {
+    console.error(error);
+    node.properties.ai_status = `error: ${String(error.message || error).slice(0, 48)}`;
+    graphCanvas?.setDirty(true, true);
+  }
+}
+
+async function generateSemanticMask(node) {
+  runGraphOnce();
+  const image = node.getInputData(0);
+  const dataUrl = imageDataUrlForVision(image);
+  if (!dataUrl) {
+    node.properties.ai_status = "needs image";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  const key = await getOpenAIApiKey();
+  if (!key) {
+    node.properties.ai_status = "API key required";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  const target = String(node.properties.target || "main subject").trim() || "main subject";
+  node.properties.ai_status = "finding region...";
+  graphCanvas?.setDirty(true, true);
+
+  const prompt = [
+    "Return only valid JSON. Do not wrap it in markdown.",
+    `Find the image region matching this target: ${target}`,
+    "Be precise and conservative. Return only the visible pixels of the requested object or body part.",
+    "If the target is clothing such as shirt, jacket, coat, upper clothing, or 上衣, include only the visible torso/upper-garment fabric. Exclude head, hands, pants, shoes, backpack, sky, ground, shadows, and background.",
+    "If the target is the person's main body/主体部分, include the visible person silhouette only. Exclude sky, ground, mountains, water, motion trails, and background gaps around limbs.",
+    "Prefer one or more tight polygons with 8 to 24 points. Use bbox only as a fallback if polygon is impossible.",
+    "Do not return the whole person unless the target explicitly asks for the whole person.",
+    "Return normalized coordinates relative to the whole image.",
+    "Use this exact schema:",
+    "{\"target\":\"...\",\"summary\":\"...\",\"regions\":[{\"label\":\"...\",\"confidence\":0.8,\"bbox\":[x,y,width,height],\"polygon\":[[x,y],[x,y],[x,y],[x,y]]}]}",
+    "If the target is not visible, return {\"target\":\"...\",\"summary\":\"not found\",\"regions\":[]}."
+  ].join("\n");
+
+  try {
+    const payload = await requestVisionJson({
+      key,
+      apiUrl: node.properties.api_url,
+      model: node.properties.vision_model,
+      prompt,
+      imageDataUrl: dataUrl,
+      detail: node.properties.detail
+    });
+    node.properties.ai_analysis_json = JSON.stringify(payload);
+    const count = Array.isArray(payload.regions) ? payload.regions.length : 0;
+    node.properties.ai_status = count ? `found ${count} region${count > 1 ? "s" : ""}` : "not found";
+    runGraphOnce();
+    scheduleUndoSnapshot();
+  } catch (error) {
+    console.error(error);
+    node.properties.ai_status = `error: ${String(error.message || error).slice(0, 48)}`;
+    graphCanvas?.setDirty(true, true);
+  }
+}
+
+async function generateRoboflowSam2(node) {
+  runGraphOnce();
+  const image = node.getInputData(0);
+  const boxField = node.getInputData(1);
+  const source = imageDataForSegmentation(image);
+  if (!source?.dataUrl) {
+    node.properties.ai_status = "needs image";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  const key = await getRoboflowApiKey();
+  if (!key) {
+    node.properties.ai_status = "API key required";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  const box = roboflowBoxForRequest(boxField, node.properties, source.width, source.height);
+  if (!box) {
+    node.properties.ai_status = "needs box";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  node.properties.ai_status = "segmenting...";
+  graphCanvas?.setDirty(true, true);
+
+  try {
+    const response = await fetch(ROBOFLOW_SAM2_PROXY_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`
+      },
+      body: JSON.stringify({
+        api_url: String(node.properties.api_url || "").trim(),
+        model: String(node.properties.model || "hiera_small").trim(),
+        image_data_url: source.dataUrl,
+        image_width: source.width,
+        image_height: source.height,
+        box
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || payload.message || `HTTP ${response.status}`);
+    const prediction = bestSam2Prediction(payload);
+    const regions = sam2RegionsFromPrediction(prediction, source.width, source.height);
+    node.properties.rf_sam2_json = JSON.stringify({
+      model: String(node.properties.model || "hiera_small").trim(),
+      image_width: source.width,
+      image_height: source.height,
+      box,
+      predictions: Array.isArray(payload.predictions) ? payload.predictions : [],
+      regions
+    });
+    node.properties.ai_status = regions.length ? `segmented ${regions.length}` : "empty mask";
+    runGraphOnce();
+    scheduleUndoSnapshot();
+  } catch (error) {
+    console.error(error);
+    node.properties.ai_status = `error: ${String(error.message || error).slice(0, 48)}`;
+    graphCanvas?.setDirty(true, true);
+  }
+}
+
+async function generateMobileSam(node) {
+  runGraphOnce();
+  const image = node.getInputData(0);
+  const boxField = node.getInputData(1);
+  const source = imageDataForSegmentation(image);
+  if (!source?.dataUrl) {
+    node.properties.ai_status = "needs image";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  const normalizedBox = normalizedBoxFromField(boxField) || normalizedBoxFromProps(node.properties);
+  if (!normalizedBox) {
+    node.properties.ai_status = "needs box";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  node.properties.ai_status = "loading MobileSAM...";
+  graphCanvas?.setDirty(true, true);
+
+  try {
+    const result = await runMobileSamBox(image, source, normalizedBox, node.properties.mask_mode, (status) => {
+      node.properties.ai_status = status;
+      graphCanvas?.setDirty(true, true);
+    });
+    node.properties.mobile_sam_field_values = Array.from(result.values);
+    node.properties.mobile_sam_field_cols = result.cols;
+    node.properties.mobile_sam_field_rows = result.rows;
+    node.properties.mobile_sam_source_width = source.width;
+    node.properties.mobile_sam_source_height = source.height;
+    node.properties.mobile_sam_box = [
+      Number(normalizedBox.x || 0),
+      Number(normalizedBox.y || 0),
+      Number(normalizedBox.width || 0),
+      Number(normalizedBox.height || 0)
+    ];
+    node.properties.ai_status = `local mask ${result.cols}x${result.rows}`;
+    runGraphOnce();
+    scheduleUndoSnapshot();
+  } catch (error) {
+    console.error(error);
+    node.properties.ai_status = `error: ${String(error.message || error).slice(0, 48)}`;
+    graphCanvas?.setDirty(true, true);
+  }
+}
+
+async function ensureMobileSamRuntime() {
+  if (state.mobileSamRuntime) return state.mobileSamRuntime;
+  if (!window.ort) {
+    await loadScriptOnce(MOBILE_SAM_ORT_URL);
+  }
+  if (!window.ort) throw new Error("ONNX runtime did not load");
+  ort.env.wasm.numThreads = 1;
+  ort.env.wasm.wasmPaths = MOBILE_SAM_WASM_PATH;
+  const sessionOptions = { executionProviders: ["wasm"] };
+  const [encoder, decoder] = await Promise.all([
+    ort.InferenceSession.create(MOBILE_SAM_ENCODER_URL, sessionOptions),
+    ort.InferenceSession.create(MOBILE_SAM_DECODER_URL, sessionOptions)
+  ]);
+  state.mobileSamRuntime = { encoder, decoder };
+  return state.mobileSamRuntime;
+}
+
+function loadScriptOnce(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      if (window.ort) {
+        resolve();
+        return;
+      }
+      existing.addEventListener("load", resolve, { once: true });
+      existing.addEventListener("error", reject, { once: true });
+      window.setTimeout(() => {
+        if (window.ort) resolve();
+        else reject(new Error(`Could not initialize ${src}`));
+      }, 2400);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error(`Could not load ${src}`));
+    document.head.appendChild(script);
+  });
+}
+
+async function runMobileSamBox(image, source, normalizedBox, maskMode, setStatus) {
+  const runtime = await ensureMobileSamRuntime();
+  setStatus?.("preparing image...");
+  const loadedImage = await loadImageElement(source.dataUrl);
+  const target = mobileSamTargetSize(loadedImage.width, loadedImage.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = target.width;
+  canvas.height = target.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(loadedImage, 0, 0, target.width, target.height);
+  const imageData = ctx.getImageData(0, 0, target.width, target.height);
+  const encoderInput = mobileSamImageTensor(imageData);
+
+  setStatus?.("encoding image...");
+  const encoded = await runtime.encoder.run({ input_image: encoderInput });
+  const imageEmbeddings = encoded.image_embeddings || encoded[Object.keys(encoded)[0]];
+  if (!imageEmbeddings) throw new Error("MobileSAM encoder returned no embeddings");
+
+  const box = clampNormalizedBox(normalizedBox);
+  const pointCoords = new ort.Tensor(new Float32Array([
+    box.x * target.width,
+    box.y * target.height,
+    (box.x + box.width) * target.width,
+    (box.y + box.height) * target.height
+  ]), [1, 2, 2]);
+  const pointLabels = new ort.Tensor(new Float32Array([2, 3]), [1, 2]);
+  const maskInput = new ort.Tensor(new Float32Array(256 * 256), [1, 1, 256, 256]);
+  const hasMask = new ort.Tensor(new Float32Array([0]), [1]);
+  const originalImageSize = new ort.Tensor(new Float32Array([target.height, target.width]), [2]);
+
+  setStatus?.("decoding mask...");
+  const decoded = await runtime.decoder.run({
+    image_embeddings: imageEmbeddings,
+    point_coords: pointCoords,
+    point_labels: pointLabels,
+    mask_input: maskInput,
+    has_mask_input: hasMask,
+    orig_im_size: originalImageSize
+  });
+  const mask = decoded.masks || decoded[Object.keys(decoded).find((key) => /mask/i.test(key))] || decoded[Object.keys(decoded)[0]];
+  const iou = decoded.iou_predictions || decoded[Object.keys(decoded).find((key) => /iou/i.test(key))] || null;
+  if (!mask) throw new Error("MobileSAM decoder returned no mask");
+  return mobileSamMaskResultToField(image, mask, iou, maskMode);
+}
+
+function loadImageElement(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Could not load image for MobileSAM"));
+    img.src = dataUrl;
+  });
+}
+
+function mobileSamTargetSize(width, height) {
+  const maxSide = 1024;
+  const scale = maxSide / Math.max(1, Math.max(width, height));
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale))
+  };
+}
+
+function mobileSamImageTensor(imageData) {
+  const { data, width, height } = imageData;
+  const input = new Float32Array(width * height * 3);
+  for (let index = 0, pixel = 0; pixel < width * height; pixel += 1, index += 4) {
+    const offset = pixel * 3;
+    input[offset] = data[index];
+    input[offset + 1] = data[index + 1];
+    input[offset + 2] = data[index + 2];
+  }
+  return new ort.Tensor(input, [height, width, 3]);
+}
+
+function clampNormalizedBox(box) {
+  const x = clampNumber(Number(box.x || 0), 0, 0.99);
+  const y = clampNumber(Number(box.y || 0), 0, 0.99);
+  const width = clampNumber(Number(box.width || 0.01), 0.01, 1 - x);
+  const height = clampNumber(Number(box.height || 0.01), 0.01, 1 - y);
+  return { x, y, width, height };
+}
+
+function mobileSamMaskResultToField(image, mask, iou, maskMode) {
+  const dims = mask.dims || [];
+  const { width: maskWidth, height: maskHeight, channelOffsets } = mobileSamMaskLayout(dims, iou, maskMode, mask.data || []);
+  const sourceAspect = Number(image.originalWidth || image.cols || 1) / Math.max(1, Number(image.originalHeight || image.rows || 1));
+  const cols = sourceAspect >= 1 ? 128 : Math.max(32, Math.round(128 * sourceAspect));
+  const rows = sourceAspect >= 1 ? Math.max(32, Math.round(128 / sourceAspect)) : 128;
+  const normalizedMask = combineMobileSamMasks(mask.data || [], channelOffsets, maskWidth * maskHeight);
+  const values = new Float32Array(cols * rows);
+  for (let row = 0; row < rows; row += 1) {
+    const sy = Math.round((row / Math.max(1, rows - 1)) * (maskHeight - 1));
+    for (let col = 0; col < cols; col += 1) {
+      const sx = Math.round((col / Math.max(1, cols - 1)) * (maskWidth - 1));
+      values[row * cols + col] = normalizedMask[sy * maskWidth + sx] || 0;
+    }
+  }
+  return { values, cols, rows };
+}
+
+function mobileSamMaskLayout(dims, iou, maskMode, data) {
+  if (dims.length === 4) {
+    const channels = Math.max(1, Number(dims[1] || 1));
+    const height = Number(dims[2] || 1);
+    const width = Number(dims[3] || 1);
+    const channelSize = width * height;
+    const mode = String(maskMode || "Largest");
+    if (mode === "Union") {
+      return { width, height, channelOffsets: Array.from({ length: channels }, (_, index) => index * channelSize) };
+    }
+    const channel = mode === "Best"
+      ? bestMobileSamChannel(iou, channels)
+      : largestMobileSamChannel(data, channels, channelSize);
+    return { width, height, channelOffsets: [channel * channelSize] };
+  }
+  if (dims.length === 3) {
+    return { width: Number(dims[2] || 1), height: Number(dims[1] || 1), channelOffsets: [0] };
+  }
+  if (dims.length === 2) {
+    return { width: Number(dims[1] || 1), height: Number(dims[0] || 1), channelOffsets: [0] };
+  }
+  return { width: 256, height: 256, channelOffsets: [0] };
+}
+
+function bestMobileSamChannel(iou, channels) {
+  const data = iou?.data || [];
+  let best = 0;
+  let bestScore = -Infinity;
+  for (let index = 0; index < Math.min(channels, data.length || channels); index += 1) {
+    const score = Number(data[index] ?? 0);
+    if (score > bestScore) {
+      best = index;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function largestMobileSamChannel(data, channels, channelSize) {
+  let best = 0;
+  let bestArea = -1;
+  for (let channel = 0; channel < channels; channel += 1) {
+    const offset = channel * channelSize;
+    let area = 0;
+    for (let index = 0; index < channelSize; index += 1) {
+      if (Number(data[offset + index] || 0) > 0) area += 1;
+    }
+    if (area > bestArea) {
+      best = channel;
+      bestArea = area;
+    }
+  }
+  return best;
+}
+
+function combineMobileSamMasks(data, offsets, length) {
+  const output = new Float32Array(length);
+  const safeOffsets = Array.isArray(offsets) && offsets.length ? offsets : [0];
+  for (const offset of safeOffsets) {
+    const normalized = normalizeMobileSamMask(data, offset, length);
+    for (let index = 0; index < length; index += 1) {
+      output[index] = Math.max(output[index], normalized[index] || 0);
+    }
+  }
+  return output;
+}
+
+function normalizeMobileSamMask(data, offset, length) {
+  const output = new Float32Array(length);
+  let min = Infinity;
+  let max = -Infinity;
+  for (let index = 0; index < length; index += 1) {
+    const value = Number(data[offset + index] || 0);
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+  }
+  for (let index = 0; index < length; index += 1) {
+    const raw = Number(data[offset + index] || 0);
+    let value = raw;
+    if (min < 0 || max > 2) value = 1 / (1 + Math.exp(-raw));
+    else if (max > 1) value = raw / Math.max(1, max);
+    output[index] = clampNumber(value, 0, 1);
+  }
+  return output;
+}
+
+async function requestVisionJson({ key, apiUrl, model, prompt, imageDataUrl, detail }) {
+  const response = await fetch(OPENAI_CHAT_PROXY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${key}`
+    },
+    body: JSON.stringify({
+      base_url: normalizeApiBaseUrl(apiUrl),
+      model: String(model || "gpt-4o-mini").trim() || "gpt-4o-mini",
+      prompt,
+      image_data_url: imageDataUrl,
+      detail: String(detail || "Low").toLowerCase()
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || payload.message || `HTTP ${response.status}`);
+  return parseJsonPayload(payload.content || payload.text || payload);
+}
+
+function parseJsonPayload(value) {
+  if (value && typeof value === "object") return value;
+  const text = String(value || "").trim();
+  if (!text) throw new Error("Empty vision response");
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("Vision response was not JSON");
+    return JSON.parse(match[0]);
+  }
+}
+
+function imageDataUrlForVision(image) {
+  if (!image || image.ngType !== "Image") return "";
+  const cols = Number(image.cols || 0);
+  const rows = Number(image.rows || 0);
+  const pixels = image.pixels || [];
+  if (!cols || !rows || pixels.length < cols * rows * 4) {
+    return image.dataUrl && image.dataUrl.length < 1_800_000 ? image.dataUrl : "";
+  }
+  const maxSide = 768;
+  const scale = Math.min(1, maxSide / Math.max(cols, rows));
+  const targetCols = Math.max(1, Math.round(cols * scale));
+  const targetRows = Math.max(1, Math.round(rows * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = cols;
+  canvas.height = rows;
+  const ctx = canvas.getContext("2d");
+  const data = new ImageData(new Uint8ClampedArray(pixels), cols, rows);
+  ctx.putImageData(data, 0, 0);
+  if (targetCols === cols && targetRows === rows) return canvas.toDataURL("image/jpeg", 0.82);
+  const scaled = document.createElement("canvas");
+  scaled.width = targetCols;
+  scaled.height = targetRows;
+  const scaledCtx = scaled.getContext("2d");
+  scaledCtx.drawImage(canvas, 0, 0, targetCols, targetRows);
+  return scaled.toDataURL("image/jpeg", 0.82);
+}
+
+function imageDataForSegmentation(image) {
+  if (!image || image.ngType !== "Image") return null;
+  const originalWidth = Math.max(1, Math.round(Number(image.originalWidth || image.cols || 1)));
+  const originalHeight = Math.max(1, Math.round(Number(image.originalHeight || image.rows || 1)));
+  if (image.dataUrl) {
+    return {
+      dataUrl: image.dataUrl,
+      width: originalWidth,
+      height: originalHeight
+    };
+  }
+  const cols = Number(image.cols || 0);
+  const rows = Number(image.rows || 0);
+  const pixels = image.pixels || [];
+  if (!cols || !rows || pixels.length < cols * rows * 4) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = cols;
+  canvas.height = rows;
+  const ctx = canvas.getContext("2d");
+  ctx.putImageData(new ImageData(new Uint8ClampedArray(pixels), cols, rows), 0, 0);
+  return {
+    dataUrl: canvas.toDataURL("image/png"),
+    width: cols,
+    height: rows
+  };
+}
+
+function roboflowBoxForRequest(boxField, props, imageWidth, imageHeight) {
+  const normalized = normalizedBoxFromField(boxField) || normalizedBoxFromProps(props);
+  if (!normalized) return null;
+  const left = clampNumber(normalized.x, 0, 0.99);
+  const top = clampNumber(normalized.y, 0, 0.99);
+  const width = clampNumber(normalized.width, 0.01, 1 - left);
+  const height = clampNumber(normalized.height, 0.01, 1 - top);
+  return {
+    x: Math.round((left + width / 2) * imageWidth),
+    y: Math.round((top + height / 2) * imageHeight),
+    width: Math.max(2, Math.round(width * imageWidth)),
+    height: Math.max(2, Math.round(height * imageHeight))
+  };
+}
+
+function normalizedBoxFromProps(props = {}) {
+  return {
+    x: Number(props.x || 0) / 100,
+    y: Number(props.y || 0) / 100,
+    width: Number(props.width || 1) / 100,
+    height: Number(props.height || 1) / 100
+  };
+}
+
+function normalizedBoxFromField(field) {
+  if (!field || field.ngType !== "Field" || !Array.isArray(field.values)) return null;
+  const cols = Number(field.cols || 0);
+  const rows = Number(field.rows || 0);
+  if (!cols || !rows) return null;
+  let minCol = cols;
+  let minRow = rows;
+  let maxCol = -1;
+  let maxRow = -1;
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const value = Number(field.values[row * cols + col] || 0);
+      if (value <= 0.2) continue;
+      minCol = Math.min(minCol, col);
+      minRow = Math.min(minRow, row);
+      maxCol = Math.max(maxCol, col);
+      maxRow = Math.max(maxRow, row);
+    }
+  }
+  if (maxCol < minCol || maxRow < minRow) return null;
+  return {
+    x: minCol / Math.max(1, cols - 1),
+    y: minRow / Math.max(1, rows - 1),
+    width: (maxCol - minCol + 1) / Math.max(1, cols),
+    height: (maxRow - minRow + 1) / Math.max(1, rows)
+  };
+}
+
+function bestSam2Prediction(payload) {
+  const predictions = Array.isArray(payload?.predictions) ? payload.predictions : [];
+  if (!predictions.length) return null;
+  return predictions.reduce((best, item) => {
+    const score = Number(item?.confidence ?? item?.score ?? 0);
+    const bestScore = Number(best?.confidence ?? best?.score ?? -Infinity);
+    return score > bestScore ? item : best;
+  }, predictions[0]);
+}
+
+function sam2RegionsFromPrediction(prediction, imageWidth, imageHeight) {
+  if (!prediction) return [];
+  const rawMasks = Array.isArray(prediction.masks) ? prediction.masks : [];
+  const regions = [];
+  for (const mask of rawMasks) {
+    const polygon = normalizeSam2MaskPolygon(mask, imageWidth, imageHeight);
+    if (polygon.length < 3) continue;
+    regions.push({
+      label: "SAM2 mask",
+      confidence: Number(prediction.confidence ?? prediction.score ?? 1),
+      polygon
+    });
+  }
+  return regions;
+}
+
+function normalizeSam2MaskPolygon(mask, imageWidth, imageHeight) {
+  const points = Array.isArray(mask?.points) ? mask.points : Array.isArray(mask?.polygon) ? mask.polygon : mask;
+  if (!Array.isArray(points)) return [];
+  return points
+    .map((point) => {
+      if (Array.isArray(point)) return [Number(point[0]), Number(point[1])];
+      return [Number(point?.x), Number(point?.y)];
+    })
+    .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
+    .map(([x, y]) => [
+      clampNumber(x / Math.max(1, imageWidth), 0, 1),
+      clampNumber(y / Math.max(1, imageHeight), 0, 1)
+    ]);
+}
+
+function analysisFromProperties(props, label) {
+  if (!props.ai_analysis_json) return null;
+  try {
+    const data = JSON.parse(props.ai_analysis_json);
+    const regions = Array.isArray(data.regions) ? data.regions : [];
+    const summary = String(data.summary || data.target || label || "Analysis");
+    return {
+      ngType: "Analysis",
+      label,
+      data,
+      regions,
+      summary,
+      history: [label],
+      stats: {
+        summary: summary.slice(0, 52),
+        regions: regions.length,
+        target: String(data.target || props.target || "").slice(0, 34)
+      }
+    };
+  } catch {
+    return null;
+  }
+}
+
+function semanticMaskField(image, analysis, options = {}) {
+  if (!image || image.ngType !== "Image" || !analysis) return null;
+  const regions = Array.isArray(analysis.regions) ? analysis.regions : [];
+  if (!regions.length) return null;
+
+  const sourceAspect = Number(image.originalWidth || image.cols || 1) / Math.max(1, Number(image.originalHeight || image.rows || 1));
+  const cols = sourceAspect >= 1 ? 128 : Math.max(32, Math.round(128 * sourceAspect));
+  const rows = sourceAspect >= 1 ? Math.max(32, Math.round(128 / sourceAspect)) : 128;
+  const feather = Math.max(0, Number(options.feather || 0)) / 100;
+  const strength = Math.max(0, Math.min(1, Number(options.strength ?? 100) / 100));
+  const values = [];
+
+  for (let row = 0; row < rows; row += 1) {
+    const y = rows <= 1 ? 0 : row / (rows - 1);
+    for (let col = 0; col < cols; col += 1) {
+      const x = cols <= 1 ? 0 : col / (cols - 1);
+      let value = 0;
+      for (const region of regions) {
+        value = Math.max(value, regionMaskValue(region, x, y, feather));
+      }
+      values.push(Math.max(0, Math.min(1, value * strength)));
+    }
+  }
+
+  const target = String(analysis.data?.target || options.target || "semantic region");
+  return {
+    ngType: "Field",
+    label: `Semantic Mask: ${target}`,
+    sourceShape: null,
+    cols,
+    rows,
+    originX: Number(image.originX || 0),
+    originY: Number(image.originY || 0),
+    width: Number(image.width || NomadicGeometry.WIDTH),
+    height: Number(image.height || NomadicGeometry.HEIGHT),
+    values,
+    history: (image.history || ["Image"]).concat([`Semantic Mask(${target})`]),
+    stats: {
+      target: target.slice(0, 36),
+      regions: regions.length,
+      feather: Math.round(Number(options.feather || 0)),
+      strength: Math.round(strength * 100)
+    }
+  };
+}
+
+function roboflowSam2Field(image, props, options = {}) {
+  if (!image || image.ngType !== "Image" || !props?.rf_sam2_json) return null;
+  let data = null;
+  try {
+    data = JSON.parse(props.rf_sam2_json);
+  } catch {
+    return null;
+  }
+  const regions = Array.isArray(data.regions) && data.regions.length
+    ? data.regions
+    : sam2RegionsFromPrediction(bestSam2Prediction(data), Number(data.image_width || image.originalWidth || image.cols || 1), Number(data.image_height || image.originalHeight || image.rows || 1));
+  if (!regions.length) return null;
+
+  const sourceAspect = Number(image.originalWidth || image.cols || 1) / Math.max(1, Number(image.originalHeight || image.rows || 1));
+  const cols = sourceAspect >= 1 ? 128 : Math.max(32, Math.round(128 * sourceAspect));
+  const rows = sourceAspect >= 1 ? Math.max(32, Math.round(128 / sourceAspect)) : 128;
+  const feather = Math.max(0, Number(options.feather || 0)) / 100;
+  const strength = Math.max(0, Math.min(1, Number(options.strength ?? 100) / 100));
+  const values = [];
+
+  for (let row = 0; row < rows; row += 1) {
+    const y = rows <= 1 ? 0 : row / (rows - 1);
+    for (let col = 0; col < cols; col += 1) {
+      const x = cols <= 1 ? 0 : col / (cols - 1);
+      let value = 0;
+      for (const region of regions) {
+        value = Math.max(value, regionMaskValue(region, x, y, feather));
+      }
+      values.push(Math.max(0, Math.min(1, value * strength)));
+    }
+  }
+
+  return {
+    ngType: "Field",
+    label: "Roboflow SAM2 Mask",
+    sourceShape: null,
+    cols,
+    rows,
+    originX: Number(image.originX || 0),
+    originY: Number(image.originY || 0),
+    width: Number(image.width || NomadicGeometry.WIDTH),
+    height: Number(image.height || NomadicGeometry.HEIGHT),
+    values,
+    history: (image.history || ["Image"]).concat(["Roboflow SAM2"]),
+    stats: {
+      model: String(data.model || props.model || "SAM2").slice(0, 28),
+      regions: regions.length,
+      feather: Math.round(Number(options.feather || 0)),
+      strength: Math.round(strength * 100)
+    }
+  };
+}
+
+function mobileSamFieldFromProperties(image, props, options = {}) {
+  if (!image || image.ngType !== "Image" || !Array.isArray(props.mobile_sam_field_values)) return null;
+  const cols = Number(props.mobile_sam_field_cols || 0);
+  const rows = Number(props.mobile_sam_field_rows || 0);
+  if (!cols || !rows || props.mobile_sam_field_values.length < cols * rows) return null;
+  const threshold = clampNumber(Number(props.threshold ?? 50) / 100, 0, 1);
+  const strength = Math.max(0, Math.min(1, Number(options.strength ?? 100) / 100));
+  const featherRadius = Math.round(Math.max(0, Number(options.feather || 0)) / 5);
+  let values = props.mobile_sam_field_values.slice(0, cols * rows).map((raw) => {
+    const value = clampNumber(Number(raw || 0), 0, 1);
+    if (threshold <= 0) return value;
+    if (value <= threshold) return 0;
+    return clampNumber((value - threshold) / Math.max(0.001, 1 - threshold), 0, 1);
+  });
+  if (featherRadius > 0) values = blurFieldValues(values, cols, rows, featherRadius);
+  values = values.map((value) => clampNumber(value * strength, 0, 1));
+  return {
+    ngType: "Field",
+    label: "Mobile SAM Mask",
+    sourceShape: null,
+    cols,
+    rows,
+    originX: Number(image.originX || 0),
+    originY: Number(image.originY || 0),
+    width: Number(image.width || NomadicGeometry.WIDTH),
+    height: Number(image.height || NomadicGeometry.HEIGHT),
+    values,
+    history: (image.history || ["Image"]).concat(["Mobile SAM"]),
+    stats: {
+      model: "MobileSAM local",
+      threshold: Math.round(threshold * 100),
+      feather: Math.round(Number(options.feather || 0)),
+      strength: Math.round(strength * 100)
+    }
+  };
+}
+
+function blurFieldValues(values, cols, rows, radius) {
+  if (radius <= 0) return values;
+  const output = new Array(values.length).fill(0);
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      let sum = 0;
+      let count = 0;
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        const y = row + dy;
+        if (y < 0 || y >= rows) continue;
+        for (let dx = -radius; dx <= radius; dx += 1) {
+          const x = col + dx;
+          if (x < 0 || x >= cols) continue;
+          sum += values[y * cols + x] || 0;
+          count += 1;
+        }
+      }
+      output[row * cols + col] = count ? sum / count : values[row * cols + col] || 0;
+    }
+  }
+  return output;
+}
+
+function boxMaskField(image, options = {}) {
+  if (!image || image.ngType !== "Image") return null;
+  const sourceAspect = Number(image.originalWidth || image.cols || 1) / Math.max(1, Number(image.originalHeight || image.rows || 1));
+  const cols = sourceAspect >= 1 ? 128 : Math.max(32, Math.round(128 * sourceAspect));
+  const rows = sourceAspect >= 1 ? Math.max(32, Math.round(128 / sourceAspect)) : 128;
+  const region = {
+    bbox: [
+      Number(options.x || 0) / 100,
+      Number(options.y || 0) / 100,
+      Number(options.width || 1) / 100,
+      Number(options.height || 1) / 100
+    ]
+  };
+  const feather = Math.max(0, Number(options.feather || 0)) / 100;
+  const strength = Math.max(0, Math.min(1, Number(options.strength ?? 100) / 100));
+  const values = [];
+  for (let row = 0; row < rows; row += 1) {
+    const y = rows <= 1 ? 0 : row / (rows - 1);
+    for (let col = 0; col < cols; col += 1) {
+      const x = cols <= 1 ? 0 : col / (cols - 1);
+      values.push(regionMaskValue(region, x, y, feather) * strength);
+    }
+  }
+  return {
+    ngType: "Field",
+    label: "Box Mask",
+    sourceShape: null,
+    cols,
+    rows,
+    originX: Number(image.originX || 0),
+    originY: Number(image.originY || 0),
+    width: Number(image.width || NomadicGeometry.WIDTH),
+    height: Number(image.height || NomadicGeometry.HEIGHT),
+    values,
+    history: (image.history || ["Image"]).concat(["Box Mask"]),
+    stats: {
+      x: Math.round(Number(options.x || 0)),
+      y: Math.round(Number(options.y || 0)),
+      width: Math.round(Number(options.width || 1)),
+      height: Math.round(Number(options.height || 1)),
+      feather: Math.round(Number(options.feather || 0))
+    }
+  };
+}
+
+function regionMaskValue(region, x, y, feather) {
+  const polygon = normalizePolygon(region.polygon);
+  if (polygon.length >= 3) {
+    const inside = pointInPolygon(x, y, polygon);
+    if (inside) return 1;
+    if (feather) {
+      const distance = distanceToPolygon(x, y, polygon);
+      if (distance <= feather) return 1 - distance / feather;
+    }
+    return 0;
+  }
+  const bbox = normalizeBbox(region.bbox);
+  if (!bbox) return polygon.length >= 3 ? 0 : 0;
+  const [left, top, width, height] = bbox;
+  const right = left + width;
+  const bottom = top + height;
+  if (!feather) return x >= left && x <= right && y >= top && y <= bottom ? 1 : 0;
+  const dx = Math.max(left - x, 0, x - right);
+  const dy = Math.max(top - y, 0, y - bottom);
+  const outside = Math.hypot(dx, dy);
+  if (outside > feather) return 0;
+  if (x >= left && x <= right && y >= top && y <= bottom) return 1;
+  return 1 - outside / feather;
+}
+
+function distanceToPolygon(x, y, polygon) {
+  let best = Infinity;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    best = Math.min(best, distanceToNormalizedSegment(x, y, polygon[j][0], polygon[j][1], polygon[i][0], polygon[i][1]));
+  }
+  return best;
+}
+
+function distanceToNormalizedSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSquared = dx * dx + dy * dy;
+  if (!lengthSquared) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared));
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+}
+
+function normalizeBbox(bbox) {
+  if (!Array.isArray(bbox) || bbox.length < 4) return null;
+  const values = bbox.slice(0, 4).map(Number);
+  if (values.some((value) => !Number.isFinite(value))) return null;
+  let [x, y, w, h] = values;
+  if (w > 1 || h > 1 || x > 1 || y > 1) {
+    x /= 100;
+    y /= 100;
+    w /= 100;
+    h /= 100;
+  }
+  if (x + w > 1.08 && w > x) w -= x;
+  if (y + h > 1.08 && h > y) h -= y;
+  return [
+    Math.max(0, Math.min(1, x)),
+    Math.max(0, Math.min(1, y)),
+    Math.max(0, Math.min(1, w)),
+    Math.max(0, Math.min(1, h))
+  ];
+}
+
+function normalizePolygon(polygon) {
+  if (!Array.isArray(polygon)) return [];
+  return polygon
+    .map((point) => Array.isArray(point) ? point.slice(0, 2).map(Number) : [Number(point?.x), Number(point?.y)])
+    .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
+    .map(([x, y]) => {
+      const nx = x > 1 ? x / 100 : x;
+      const ny = y > 1 ? y / 100 : y;
+      return [Math.max(0, Math.min(1, nx)), Math.max(0, Math.min(1, ny))];
+    });
+}
+
+function pointInPolygon(x, y, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const xi = polygon[i][0];
+    const yi = polygon[i][1];
+    const xj = polygon[j][0];
+    const yj = polygon[j][1];
+    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / Math.max(0.000001, yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
 }
 
 function setWidgetValue(node, name, value) {
@@ -2474,18 +3735,20 @@ function pointToSegmentDistance(point, start, end) {
 function positionForNewNode(group, count) {
   const columns = {
     Source: 60,
-    Geometry: 320,
-    Convert: 580,
-    Field: 780,
-    Boolean: 980,
-    Process: 1220,
-    Material: 1480,
-    Style: 1740,
-    Math: 2000,
+    AI: 320,
+    Geometry: 580,
+    Convert: 840,
+    Field: 1040,
+    Boolean: 1240,
+    Process: 1480,
+    Material: 1740,
+    Style: 2000,
+    Math: 2260,
     Output: 900
   };
   const rows = {
     Source: 120,
+    AI: 120,
     Geometry: 120,
     Convert: 120,
     Field: 120,
@@ -2620,7 +3883,7 @@ function repairNodePositions() {
 
 function refreshImageInputs() {
   graph._nodes
-    .filter((node) => node.properties?.type === "nomadic/source/image_input" || node.properties?.type === "nomadic/source/image_field_input")
+    .filter((node) => node.properties?.type === "nomadic/source/image_input" || node.properties?.type === "nomadic/source/image_field_input" || node.properties?.type === "nomadic/source/gpt_image")
     .filter((node) => node.properties.image_data_url && node.properties.image_sampling_version !== 4 && !node.properties.image_refreshing)
     .forEach((node) => {
       node.properties.image_refreshing = true;

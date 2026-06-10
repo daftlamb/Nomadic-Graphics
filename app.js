@@ -27,6 +27,7 @@ const TEXT_FONT_OPTIONS = [
   "Impact"
 ];
 const COLOR_PALETTE_OPTIONS = ["Survey", "Warm", "Cool", "Ink", "Pop", "Neon", "Riso", "Candy", "Signal", "Random"];
+const DEFAULT_MAGENTA_BACKEND = /Win/i.test(navigator.platform || "") ? "jax" : "mlx";
 
 const DATA_TYPES = {
   audio: "Audio",
@@ -199,7 +200,7 @@ const nodeGroups = [
           ["text", "Prompt", "ambient pulses with glassy synths and soft sub bass"],
           ["combo", "Model", "mrt2_small", ["mrt2_small", "mrt2_base"]],
           ["slider", "Duration", 4, 2, 16],
-          ["combo", "Backend", "mlx", ["mlx", "jax"]],
+          ["combo", "Backend", DEFAULT_MAGENTA_BACKEND, ["mlx", "jax"]],
           ["combo", "Cache", "On", ["On", "Off"]]
         ]
       },

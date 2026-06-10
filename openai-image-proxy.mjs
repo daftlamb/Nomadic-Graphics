@@ -184,7 +184,8 @@ async function newestFile(dir, extensions, sinceMs) {
 async function magentaPayloadToAudio(input) {
   const prompt = String(input.prompt || "").trim();
   if (!prompt) throw new Error("Prompt is required");
-  const backend = ["mlx", "jax"].includes(String(input.backend || "").toLowerCase()) ? String(input.backend).toLowerCase() : "mlx";
+  const requestedBackend = ["mlx", "jax"].includes(String(input.backend || "").toLowerCase()) ? String(input.backend).toLowerCase() : "mlx";
+  const backend = isWindows && requestedBackend === "mlx" ? "jax" : requestedBackend;
   const model = String(input.model || "mrt2_small").trim() || "mrt2_small";
   const duration = Math.max(1, Math.min(60, Number(input.duration || 4)));
   const workDir = await mkdtemp(join(tmpdir(), "nomadic-magenta-"));

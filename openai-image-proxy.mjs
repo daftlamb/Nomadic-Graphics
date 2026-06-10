@@ -202,7 +202,7 @@ async function magentaPayloadToAudio(input) {
         PYTHONUTF8: "1",
         PYTHONIOENCODING: "utf-8"
       },
-      timeout: Math.max(180_000, duration * 45_000)
+      timeout: Math.max(model === "mrt2_base" ? 900_000 : 180_000, duration * 60_000)
     });
     const wav = await newestFile(outputDir, [".wav", ".mp3", ".flac", ".aiff", ".aif"], startedAt)
       || await newestFile(workDir, [".wav", ".mp3", ".flac", ".aiff", ".aif"], startedAt);

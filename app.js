@@ -29,6 +29,7 @@ const TEXT_FONT_OPTIONS = [
 const COLOR_PALETTE_OPTIONS = ["Survey", "Warm", "Cool", "Ink", "Pop", "Neon", "Riso", "Candy", "Signal", "Random"];
 
 const DATA_TYPES = {
+  audio: "Audio",
   image: "Image",
   shape: "Shape",
   points: "PointSet",
@@ -51,6 +52,15 @@ const nodeGroups = [
   {
     name: "Input",
     nodes: [
+      {
+        type: "nomadic/source/audio_input",
+        title: "Audio Input",
+        output: "audio",
+        description: "Loads an audio clip for rhythm-driven graphics.",
+        widgets: [
+          ["button", "Load Audio"]
+        ]
+      },
       {
         type: "nomadic/source/text_shape",
         title: "Text Shape",
@@ -151,10 +161,11 @@ const nodeGroups = [
           ["button", "Generate"],
           ["text", "API URL", "https://yq66.ai"],
           ["text", "Prompt", "A stark black and white editorial poster texture, abstract topographic lines, printed ink grain"],
-          ["combo", "Model", "gpt-image-2", ["gpt-image-2", "gpt-image-1", "gpt-image-1-mini", "gpt-image-1.5"]],
+          ["combo", "Model", "gpt-image-2-pro", ["gpt-image-2-pro", "gpt-image-2", "gpt-image-1", "gpt-image-1-mini", "gpt-image-1.5"]],
           ["combo", "Size", "1024x1024", ["1024x1024", "1536x1024", "1024x1536", "2048x2048", "2048x1152", "3840x2160", "2160x3840", "Auto"]],
           ["combo", "Quality", "Medium", ["Auto", "Low", "Medium", "High"]],
           ["combo", "Background", "Opaque", ["Auto", "Opaque", "Transparent"]],
+          ["combo", "Cache", "On", ["On", "Off"]],
           ["combo", "Blend", "Normal", ["Normal", "Multiply", "Screen", "Overlay", "Darken", "Lighten"]],
           ["slider", "Scale", 100, 40, 260],
           ["slider", "Opacity", 100, 0, 100]
@@ -176,7 +187,102 @@ const nodeGroups = [
     ]
   },
   {
+    name: "Audio",
+    nodes: [
+      {
+        type: "nomadic/audio/magenta_music",
+        title: "Magenta Music",
+        output: "audio",
+        description: "Generates a short music loop through a local Magenta RealTime backend.",
+        widgets: [
+          ["button", "Generate"],
+          ["text", "Prompt", "ambient pulses with glassy synths and soft sub bass"],
+          ["combo", "Model", "mrt2_small", ["mrt2_small", "mrt2_base"]],
+          ["slider", "Duration", 4, 2, 16],
+          ["combo", "Backend", "mlx", ["mlx", "jax"]],
+          ["combo", "Cache", "On", ["On", "Off"]]
+        ]
+      },
+      {
+        type: "nomadic/audio/features_to_field",
+        title: "Audio Features",
+        input: "audio",
+        output: "field",
+        description: "Converts audio amplitude or transients into a scalar field.",
+        widgets: [
+          ["combo", "Mode", "Amplitude", ["Amplitude", "Onsets", "Waveform"]],
+          ["slider", "Columns", 128, 32, 256],
+          ["slider", "Rows", 64, 16, 160],
+          ["slider", "Contrast", 70, 10, 180],
+          ["slider", "Smoothing", 35, 0, 90]
+        ]
+      }
+    ]
+  },
+  {
     name: "AI",
+    nodes: [
+      {
+        type: "nomadic/ai/gpt_image_edit",
+        title: "GPT Image Edit",
+        input: "image",
+        output: "image",
+        description: "Edits an input image through the local OpenAI-compatible proxy.",
+        widgets: [
+          ["button", "Edit"],
+          ["text", "API URL", "https://yq66.ai"],
+          ["text", "Prompt", "Change the image into a high fashion editorial poster while preserving the main subject."],
+          ["combo", "Model", "gpt-image-2-pro", ["gpt-image-2-pro", "gpt-image-2", "gpt-image-1"]],
+          ["combo", "Size", "1024x1024", ["1024x1024", "1536x1024", "1024x1536", "2048x2048", "2048x1152", "3840x2160", "2160x3840", "Auto"]],
+          ["combo", "Quality", "Medium", ["Auto", "Low", "Medium", "High"]],
+          ["combo", "Background", "Opaque", ["Auto", "Opaque", "Transparent"]],
+          ["combo", "Cache", "On", ["On", "Off"]],
+          ["combo", "Blend", "Normal", ["Normal", "Multiply", "Screen", "Overlay", "Darken", "Lighten"]],
+          ["slider", "Scale", 100, 40, 260],
+          ["slider", "Opacity", 100, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/ai/box_mask",
+        title: "Box Mask",
+        input: "image",
+        output: "field",
+        description: "Creates a precise rectangular mask from normalized image coordinates.",
+        widgets: [
+          ["slider", "X", 25, 0, 100],
+          ["slider", "Y", 20, 0, 100],
+          ["slider", "Width", 50, 1, 100],
+          ["slider", "Height", 60, 1, 100],
+          ["slider", "Feather", 4, 0, 40],
+          ["slider", "Strength", 100, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/ai/mobile_sam",
+        title: "Mobile SAM",
+        inputs: [
+          { name: "Image", type: "image" },
+          { name: "Box", type: "field", optional: true }
+        ],
+        output: "field",
+        description: "Runs MobileSAM locally with a box prompt and converts the mask into a field.",
+        widgets: [
+          ["button", "Segment"],
+          ["combo", "Model", "MobileSAM Quant", ["MobileSAM Quant"]],
+          ["slider", "X", 25, 0, 100],
+          ["slider", "Y", 20, 0, 100],
+          ["slider", "Width", 50, 1, 100],
+          ["slider", "Height", 60, 1, 100],
+          ["combo", "Mask Mode", "Largest", ["Largest", "Best", "Union"]],
+          ["slider", "Threshold", 50, 0, 100],
+          ["slider", "Feather", 3, 0, 28],
+          ["slider", "Strength", 100, 0, 100]
+        ]
+      }
+    ]
+  },
+  {
+    name: "Legacy AI",
     nodes: [
       {
         type: "nomadic/ai/vision_judge",
@@ -212,21 +318,6 @@ const nodeGroups = [
         ]
       },
       {
-        type: "nomadic/ai/box_mask",
-        title: "Box Mask",
-        input: "image",
-        output: "field",
-        description: "Creates a precise rectangular mask from normalized image coordinates.",
-        widgets: [
-          ["slider", "X", 25, 0, 100],
-          ["slider", "Y", 20, 0, 100],
-          ["slider", "Width", 50, 1, 100],
-          ["slider", "Height", 60, 1, 100],
-          ["slider", "Feather", 4, 0, 40],
-          ["slider", "Strength", 100, 0, 100]
-        ]
-      },
-      {
         type: "nomadic/ai/roboflow_sam2",
         title: "Roboflow SAM2",
         inputs: [
@@ -243,28 +334,6 @@ const nodeGroups = [
           ["slider", "Y", 20, 0, 100],
           ["slider", "Width", 50, 1, 100],
           ["slider", "Height", 60, 1, 100],
-          ["slider", "Feather", 3, 0, 28],
-          ["slider", "Strength", 100, 0, 100]
-        ]
-      },
-      {
-        type: "nomadic/ai/mobile_sam",
-        title: "Mobile SAM",
-        inputs: [
-          { name: "Image", type: "image" },
-          { name: "Box", type: "field", optional: true }
-        ],
-        output: "field",
-        description: "Runs MobileSAM locally with a box prompt and converts the mask into a field.",
-        widgets: [
-          ["button", "Segment"],
-          ["combo", "Model", "MobileSAM Quant", ["MobileSAM Quant"]],
-          ["slider", "X", 25, 0, 100],
-          ["slider", "Y", 20, 0, 100],
-          ["slider", "Width", 50, 1, 100],
-          ["slider", "Height", 60, 1, 100],
-          ["combo", "Mask Mode", "Largest", ["Largest", "Best", "Union"]],
-          ["slider", "Threshold", 50, 0, 100],
           ["slider", "Feather", 3, 0, 28],
           ["slider", "Strength", 100, 0, 100]
         ]
@@ -1103,9 +1172,13 @@ const THEME_STORAGE_KEY = "nomadic-graphics.theme";
 const PANEL_STATE_STORAGE_KEY = "nomadic-graphics.panels";
 const API_KEY_STORAGE_KEY = "nomadic-graphics.api-key";
 const ROBOFLOW_API_KEY_STORAGE_KEY = "nomadic-graphics.roboflow-api-key";
-const OPENAI_IMAGE_PROXY_URL = "http://127.0.0.1:8787/openai/image";
-const OPENAI_CHAT_PROXY_URL = "http://127.0.0.1:8787/openai/chat";
-const ROBOFLOW_SAM2_PROXY_URL = "http://127.0.0.1:8787/roboflow/sam2";
+const GPT_IMAGE_CACHE_DB = "nomadic-graphics-cache";
+const GPT_IMAGE_CACHE_STORE = "gpt_images";
+const MAGENTA_AUDIO_PROXY_URL = "http://127.0.0.1:8788/magenta/generate";
+const OPENAI_IMAGE_PROXY_URL = "http://127.0.0.1:8788/openai/image";
+const OPENAI_IMAGE_EDIT_PROXY_URL = "http://127.0.0.1:8788/openai/image-edit";
+const OPENAI_CHAT_PROXY_URL = "http://127.0.0.1:8788/openai/chat";
+const ROBOFLOW_SAM2_PROXY_URL = "http://127.0.0.1:8788/roboflow/sam2";
 const MOBILE_SAM_ENCODER_URL = "vendor/mobilesam/mobilesam.encoder.onnx";
 const MOBILE_SAM_DECODER_URL = "vendor/mobilesam/mobilesam.decoder.quant.onnx";
 const MOBILE_SAM_ORT_URL = "vendor/ort/ort.wasm.min.js";
@@ -1505,6 +1578,9 @@ function colorForGroup(group) {
 function runNode(def, inputs, props) {
   const input = inputs[0] || null;
   if (props.bypass === "On") return input ? bypassData(input, def.title) : null;
+  if (def.type === "nomadic/source/audio_input" || def.type === "nomadic/audio/magenta_music") {
+    return audioFromProperties(props);
+  }
   if (def.type === "nomadic/source/text_shape") {
     return NomadicGeometry.createTextShape({
       text: props.text,
@@ -1590,6 +1666,31 @@ function runNode(def, inputs, props) {
     }
     return layer;
   }
+  if (def.type === "nomadic/ai/gpt_image_edit") {
+    const layer = NomadicGeometry.createImageLayer({
+      dataUrl: props.image_data_url,
+      pixels: props.image_raster_pixels || props.image_pixels,
+      cols: props.image_raster_cols || props.image_cols,
+      rows: props.image_raster_rows || props.image_rows,
+      originalWidth: props.image_original_width,
+      originalHeight: props.image_original_height,
+      label: props.image_label || "GPT Image Edit",
+      blend: props.blend,
+      scale: props.scale,
+      opacity: props.opacity
+    });
+    if (layer) {
+      layer.label = props.image_label || "GPT Image Edit";
+      layer.history = ["GPT Image Edit"];
+      layer.stats = {
+        ...(layer.stats || {}),
+        model: normalizeImageModel(props.model, props.api_url),
+        size: props.size || "1024x1024",
+        quality: props.quality || "Medium"
+      };
+    }
+    return layer;
+  }
   if (def.type === "nomadic/ai/vision_judge") {
     return analysisFromProperties(props, "Vision Judge");
   }
@@ -1623,6 +1724,9 @@ function runNode(def, inputs, props) {
       feather: props.feather,
       strength: props.strength
     });
+  }
+  if (def.type === "nomadic/audio/features_to_field") {
+    return audioFeatureField(inputs[0], props);
   }
   if (def.type === "nomadic/source/image_field_input") {
     return NomadicGeometry.createImageField({
@@ -2084,6 +2188,18 @@ function truncateCanvasText(ctx, text, maxWidth) {
 }
 
 function handleNodeButton(node, def, name) {
+  if (def.type === "nomadic/source/audio_input" && name === "Load Audio") {
+    readLocalFile("audio/*", "dataURL").then((dataUrl) => {
+      if (!dataUrl) return;
+      applyAudioDataUrl(node, dataUrl, "Audio Input").then(() => {
+        runGraphOnce();
+        scheduleUndoSnapshot();
+      });
+    });
+  }
+  if (def.type === "nomadic/audio/magenta_music" && name === "Generate") {
+    generateMagentaMusic(node);
+  }
   if (def.type === "nomadic/source/svg_input" && name === "Load SVG") {
     readLocalFile(".svg,image/svg+xml", "text").then((text) => {
       if (!text) return;
@@ -2107,6 +2223,9 @@ function handleNodeButton(node, def, name) {
   }
   if (def.type === "nomadic/source/gpt_image" && name === "Generate") {
     generateGptImage(node);
+  }
+  if (def.type === "nomadic/ai/gpt_image_edit" && name === "Edit") {
+    generateGptImageEdit(node);
   }
   if (def.type === "nomadic/ai/vision_judge" && name === "Analyze") {
     generateVisionAnalysis(node);
@@ -2134,6 +2253,10 @@ function handleNodeWidgetChange(node, def, name) {
     node.properties.gpt_status = "needs Generate";
     return;
   }
+  if (def.type === "nomadic/ai/gpt_image_edit" && ["API URL", "Prompt", "Model", "Size", "Quality", "Background"].includes(name)) {
+    node.properties.ai_status = "needs Edit";
+    return;
+  }
   if (def.type === "nomadic/ai/vision_judge" && ["API URL", "Vision Model", "Question", "Detail"].includes(name)) {
     node.properties.ai_status = "needs Analyze";
     return;
@@ -2148,6 +2271,10 @@ function handleNodeWidgetChange(node, def, name) {
   }
   if (def.type === "nomadic/ai/mobile_sam" && ["Model", "X", "Y", "Width", "Height", "Mask Mode"].includes(name)) {
     node.properties.ai_status = "needs Segment";
+    return;
+  }
+  if (def.type === "nomadic/audio/magenta_music" && ["Prompt", "Model", "Duration", "Backend"].includes(name)) {
+    node.properties.ai_status = "needs Generate";
     return;
   }
   if ((def.type !== "nomadic/source/image_input" && def.type !== "nomadic/source/image_field_input" && def.type !== "nomadic/source/gpt_image") || name !== "Scale") return;
@@ -2251,37 +2378,318 @@ async function generateGptImage(node) {
   graphCanvas?.setDirty(true, true);
 
   try {
+    const requestPayload = {
+      prompt,
+      model: normalizeImageModel(node.properties.model, node.properties.api_url),
+      base_url: normalizeApiBaseUrl(node.properties.api_url),
+      size: normalizeOpenAIOption(node.properties.size),
+      quality: normalizeOpenAIOption(node.properties.quality),
+      background: normalizeOpenAIOption(node.properties.background)
+    };
+    const cacheKey = node.properties.cache === "Off" ? null : await gptImageCacheKey(requestPayload);
+    const cached = cacheKey ? await readGptImageCache(cacheKey) : null;
+    if (cached?.image_base64) {
+      await applyGptImagePayload(node, cached);
+      node.properties.gpt_status = "cached image";
+      runGraphOnce();
+      scheduleUndoSnapshot();
+      graphCanvas?.setDirty(true, true);
+      return;
+    }
+
     const response = await fetch(OPENAI_IMAGE_PROXY_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${key}`
       },
-      body: JSON.stringify({
-        prompt,
-        model: normalizeImageModel(node.properties.model, node.properties.api_url),
-        base_url: normalizeApiBaseUrl(node.properties.api_url),
-        size: normalizeOpenAIOption(node.properties.size),
-        quality: normalizeOpenAIOption(node.properties.quality),
-        background: normalizeOpenAIOption(node.properties.background)
-      })
+      body: JSON.stringify(requestPayload)
     });
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || payload.message || `HTTP ${response.status}`);
     if (!payload.image_base64) throw new Error("No image returned");
 
-    const dataUrl = `data:image/png;base64,${payload.image_base64}`;
-    node.properties.image_data_url = dataUrl;
-    const imageData = await loadImageField(dataUrl);
-    Object.assign(node.properties, imageData);
-    node.properties.image_label = `GPT Image ${imageData.image_original_width || ""}x${imageData.image_original_height || ""}`.trim();
+    await applyGptImagePayload(node, payload);
+    if (cacheKey) writeGptImageCache(cacheKey, payload);
     node.properties.gpt_status = "generated";
     runGraphOnce();
     scheduleUndoSnapshot();
   } catch (error) {
     console.error(error);
     node.properties.gpt_status = `error: ${String(error.message || error).slice(0, 48)}`;
+    graphCanvas?.setDirty(true, true);
+  }
+}
+
+async function applyGptImagePayload(node, payload, label = "GPT Image") {
+  const dataUrl = `data:image/png;base64,${payload.image_base64}`;
+  node.properties.image_data_url = dataUrl;
+  const imageData = await loadImageField(dataUrl);
+  Object.assign(node.properties, imageData);
+  node.properties.image_label = `${label} ${imageData.image_original_width || ""}x${imageData.image_original_height || ""}`.trim();
+}
+
+async function generateGptImageEdit(node) {
+  runGraphOnce();
+  const source = imageDataForSegmentation(node.getInputData(0));
+  if (!source?.dataUrl) {
+    node.properties.ai_status = "needs image";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  const prompt = String(node.properties.prompt || "").trim();
+  if (!prompt) {
+    node.properties.ai_status = "prompt required";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  const key = await getOpenAIApiKey();
+  if (!key) {
+    node.properties.ai_status = "API key required";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+
+  node.properties.ai_status = "editing...";
+  graphCanvas?.setDirty(true, true);
+
+  try {
+    const requestPayload = {
+      prompt,
+      model: normalizeImageModel(node.properties.model, node.properties.api_url),
+      base_url: normalizeApiBaseUrl(node.properties.api_url),
+      size: normalizeOpenAIOption(node.properties.size),
+      quality: normalizeOpenAIOption(node.properties.quality),
+      background: normalizeOpenAIOption(node.properties.background),
+      image_data_url: source.dataUrl
+    };
+    const cacheKey = node.properties.cache === "Off" ? null : await gptImageCacheKey({
+      mode: "edit",
+      ...requestPayload
+    });
+    const cached = cacheKey ? await readGptImageCache(cacheKey) : null;
+    if (cached?.image_base64) {
+      await applyGptImagePayload(node, cached, "GPT Image Edit");
+      node.properties.ai_status = "cached edit";
+      runGraphOnce();
+      scheduleUndoSnapshot();
+      graphCanvas?.setDirty(true, true);
+      return;
+    }
+
+    const response = await fetch(OPENAI_IMAGE_EDIT_PROXY_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`
+      },
+      body: JSON.stringify(requestPayload)
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || payload.message || `HTTP ${response.status}`);
+    if (!payload.image_base64) throw new Error("No image returned");
+
+    await applyGptImagePayload(node, payload, "GPT Image Edit");
+    if (cacheKey) writeGptImageCache(cacheKey, payload);
+    node.properties.ai_status = "edited";
+    runGraphOnce();
+    scheduleUndoSnapshot();
+  } catch (error) {
+    console.error(error);
+    node.properties.ai_status = `error: ${String(error.message || error).slice(0, 48)}`;
+    graphCanvas?.setDirty(true, true);
+  }
+}
+
+function audioFromProperties(props) {
+  if (!props.audio_data_url) return null;
+  const peaks = Array.isArray(props.audio_peaks) ? props.audio_peaks : [];
+  const rms = Array.isArray(props.audio_rms) ? props.audio_rms : [];
+  return {
+    ngType: "Audio",
+    dataUrl: props.audio_data_url,
+    label: props.audio_label || "Audio",
+    duration: Number(props.audio_duration || 0),
+    sampleRate: Number(props.audio_sample_rate || 0),
+    channels: Number(props.audio_channels || 0),
+    peaks,
+    rms,
+    onsets: Array.isArray(props.audio_onsets) ? props.audio_onsets : audioOnsets(rms),
+    history: [props.audio_label || "Audio"],
+    stats: {
+      duration: `${Number(props.audio_duration || 0).toFixed(2)}s`,
+      samples: props.audio_sample_count || 0
+    }
+  };
+}
+
+async function applyAudioDataUrl(node, dataUrl, label) {
+  node.properties.ai_status = "analyzing audio...";
+  graphCanvas?.setDirty(true, true);
+  const features = await analyzeAudioDataUrl(dataUrl);
+  node.properties.audio_data_url = dataUrl;
+  node.properties.audio_label = `${label} ${features.duration.toFixed(2)}s`;
+  node.properties.audio_duration = features.duration;
+  node.properties.audio_sample_rate = features.sampleRate;
+  node.properties.audio_channels = features.channels;
+  node.properties.audio_sample_count = features.sampleCount;
+  node.properties.audio_peaks = features.peaks;
+  node.properties.audio_rms = features.rms;
+  node.properties.audio_onsets = features.onsets;
+  node.properties.ai_status = "audio ready";
+}
+
+async function analyzeAudioDataUrl(dataUrl) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) throw new Error("Web Audio is not available");
+  const context = new AudioContextClass();
+  try {
+    const buffer = await (await fetch(dataUrl)).arrayBuffer();
+    const audio = await context.decodeAudioData(buffer.slice(0));
+    const channel = audio.getChannelData(0);
+    const bins = 128;
+    const peaks = [];
+    const rms = [];
+    for (let bin = 0; bin < bins; bin += 1) {
+      const start = Math.floor((bin / bins) * channel.length);
+      const end = Math.max(start + 1, Math.floor(((bin + 1) / bins) * channel.length));
+      let peak = 0;
+      let sum = 0;
+      for (let index = start; index < end; index += 1) {
+        const value = Math.abs(channel[index] || 0);
+        peak = Math.max(peak, value);
+        sum += value * value;
+      }
+      peaks.push(clampNumber(peak, 0, 1));
+      rms.push(clampNumber(Math.sqrt(sum / Math.max(1, end - start)) * 1.8, 0, 1));
+    }
+    return {
+      duration: audio.duration,
+      sampleRate: audio.sampleRate,
+      channels: audio.numberOfChannels,
+      sampleCount: audio.length,
+      peaks,
+      rms,
+      onsets: audioOnsets(rms)
+    };
+  } finally {
+    context.close?.();
+  }
+}
+
+function audioOnsets(rms) {
+  let previous = 0;
+  return (rms || []).map((value) => {
+    const onset = Math.max(0, Number(value || 0) - previous);
+    previous = Number(value || 0) * 0.82 + previous * 0.18;
+    return clampNumber(onset * 4, 0, 1);
+  });
+}
+
+function audioFeatureField(audio, props = {}) {
+  if (!audio || audio.ngType !== "Audio") return null;
+  const cols = Math.round(Number(props.columns || 128));
+  const rows = Math.round(Number(props.rows || 64));
+  const contrast = Number(props.contrast || 70) / 70;
+  const smoothing = Number(props.smoothing || 0) / 100;
+  const source = audioFeatureSeries(audio, props.mode);
+  if (!source.length) return null;
+  const series = resampleSeries(source, cols);
+  const values = [];
+  for (let row = 0; row < rows; row += 1) {
+    const y = rows <= 1 ? 0 : row / (rows - 1);
+    for (let col = 0; col < cols; col += 1) {
+      const left = series[Math.max(0, col - 1)] || 0;
+      const center = series[col] || 0;
+      const right = series[Math.min(cols - 1, col + 1)] || 0;
+      const smooth = center * (1 - smoothing) + ((left + center + right) / 3) * smoothing;
+      const ridge = 1 - Math.abs(y - 0.5) * 2;
+      values.push(clampNumber(Math.pow(smooth, 1 / Math.max(0.1, contrast)) * (0.22 + ridge * 0.78), 0, 1));
+    }
+  }
+  return {
+    ngType: "Field",
+    label: `${audio.label || "Audio"} / ${props.mode || "Amplitude"} Field`,
+    originX: 0,
+    originY: 0,
+    width: NomadicGeometry.WIDTH,
+    height: NomadicGeometry.HEIGHT,
+    cols,
+    rows,
+    values,
+    history: (audio.history || ["Audio"]).concat([`Audio Field(${props.mode || "Amplitude"})`]),
+    stats: {
+      mode: props.mode || "Amplitude",
+      duration: `${Number(audio.duration || 0).toFixed(2)}s`
+    }
+  };
+}
+
+function audioFeatureSeries(audio, mode) {
+  if (mode === "Waveform") return audio.peaks || [];
+  if (mode === "Onsets") return audio.onsets || [];
+  return audio.rms || audio.peaks || [];
+}
+
+function resampleSeries(series, count) {
+  if (!series.length || count <= 0) return [];
+  if (series.length === count) return series.slice();
+  const output = [];
+  for (let index = 0; index < count; index += 1) {
+    const t = count <= 1 ? 0 : (index / (count - 1)) * (series.length - 1);
+    const left = Math.floor(t);
+    const right = Math.min(series.length - 1, left + 1);
+    const mix = t - left;
+    output.push((series[left] || 0) * (1 - mix) + (series[right] || 0) * mix);
+  }
+  return output;
+}
+
+async function generateMagentaMusic(node) {
+  const prompt = String(node.properties.prompt || "").trim();
+  if (!prompt) {
+    node.properties.ai_status = "prompt required";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+  node.properties.ai_status = "generating audio...";
+  graphCanvas?.setDirty(true, true);
+  try {
+    const requestPayload = {
+      prompt,
+      model: String(node.properties.model || "mrt2_small").trim(),
+      duration: Number(node.properties.duration || 4),
+      backend: String(node.properties.backend || "mlx").trim()
+    };
+    const cacheKey = node.properties.cache === "Off" ? null : await gptImageCacheKey({ mode: "magenta_audio", ...requestPayload });
+    const cached = cacheKey ? await readGptImageCache(cacheKey) : null;
+    if (cached?.audio_data_url) {
+      await applyAudioDataUrl(node, cached.audio_data_url, "Magenta Music");
+      node.properties.ai_status = "cached audio";
+      runGraphOnce();
+      scheduleUndoSnapshot();
+      return;
+    }
+    const response = await fetch(MAGENTA_AUDIO_PROXY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestPayload)
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || payload.message || `HTTP ${response.status}`);
+    if (!payload.audio_data_url) throw new Error("No audio returned");
+    await applyAudioDataUrl(node, payload.audio_data_url, "Magenta Music");
+    if (cacheKey) writeGptImageCache(cacheKey, { audio_data_url: payload.audio_data_url });
+    node.properties.ai_status = "generated";
+    runGraphOnce();
+    scheduleUndoSnapshot();
+  } catch (error) {
+    console.error(error);
+    node.properties.ai_status = `error: ${String(error.message || error).slice(0, 48)}`;
     graphCanvas?.setDirty(true, true);
   }
 }
@@ -2294,8 +2702,8 @@ function normalizeOpenAIOption(value) {
 function normalizeImageModel(model, apiUrl) {
   const text = String(model || "").trim();
   const baseUrl = normalizeApiBaseUrl(apiUrl);
-  if (/yq66\.ai/i.test(baseUrl) && (!text || text === "Image2" || text === "image-2" || /^gpt-image-1/i.test(text))) return "gpt-image-2";
-  return text || "gpt-image-2";
+  if (/yq66\.ai/i.test(baseUrl) && (!text || text === "Image2" || text === "image-2")) return "gpt-image-2-pro";
+  return text || "gpt-image-2-pro";
 }
 
 function normalizeApiBaseUrl(value) {
@@ -3394,7 +3802,7 @@ function libraryGroupKey(name) {
 
 function libraryGroups() {
   if (state.libraryMode === "Process") return nodeGroups;
-  const typeOrder = ["image", "tiles", "selector", "shape", "points", "field", "traces", "cells", "artifact", "layers", "value", "array", "color"];
+  const typeOrder = ["image", "audio", "tiles", "selector", "shape", "points", "field", "traces", "cells", "artifact", "layers", "value", "array", "color"];
   return typeOrder
     .map((type) => ({
       name: readableType(type),
@@ -3735,6 +4143,7 @@ function pointToSegmentDistance(point, start, end) {
 function positionForNewNode(group, count) {
   const columns = {
     Source: 60,
+    Audio: 320,
     AI: 320,
     Geometry: 580,
     Convert: 840,
@@ -3748,6 +4157,7 @@ function positionForNewNode(group, count) {
   };
   const rows = {
     Source: 120,
+    Audio: 120,
     AI: 120,
     Geometry: 120,
     Convert: 120,
@@ -4159,6 +4569,56 @@ function writeStoredValue(key, value) {
     return true;
   } catch {
     return false;
+  }
+}
+
+function openGptImageCacheDb() {
+  if (!window.indexedDB) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const request = indexedDB.open(GPT_IMAGE_CACHE_DB, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(GPT_IMAGE_CACHE_STORE)) db.createObjectStore(GPT_IMAGE_CACHE_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+    request.onblocked = () => resolve(null);
+  });
+}
+
+async function gptImageCacheKey(payload) {
+  const text = JSON.stringify(Object.keys(payload).sort().reduce((result, key) => {
+    result[key] = payload[key];
+    return result;
+  }, {}));
+  if (!crypto?.subtle) return `plain:${text}`;
+  const bytes = new TextEncoder().encode(text);
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function readGptImageCache(key) {
+  const db = await openGptImageCacheDb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    const request = db.transaction(GPT_IMAGE_CACHE_STORE, "readonly").objectStore(GPT_IMAGE_CACHE_STORE).get(key);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => resolve(null);
+  });
+}
+
+async function writeGptImageCache(key, payload) {
+  try {
+    const db = await openGptImageCacheDb();
+    if (!db) return;
+    const record = { ...payload, saved_at: new Date().toISOString() };
+    await new Promise((resolve) => {
+      const request = db.transaction(GPT_IMAGE_CACHE_STORE, "readwrite").objectStore(GPT_IMAGE_CACHE_STORE).put(record, key);
+      request.onsuccess = resolve;
+      request.onerror = resolve;
+    });
+  } catch {
+    // Cache writes should never block image generation.
   }
 }
 

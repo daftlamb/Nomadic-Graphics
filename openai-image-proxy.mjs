@@ -1,11 +1,16 @@
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { execFile } from "node:child_process";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
-const port = Number(process.env.PORT || 8787);
+const port = Number(process.env.PORT || 8788);
 const defaultApiBaseUrl = process.env.OPENAI_API_BASE_URL || process.env.NEWAPI_BASE_URL || "https://yq66.ai";
+const defaultMagentaCli = "E:\\AIEnvs\\magenta-rt\\Scripts\\mrt.exe";
+const defaultMagentaHome = "E:\\AIModels\\Magenta";
+const defaultMagentaOutputDir = "E:\\AIModels\\Magenta\\magenta-rt-v2\\outputs";
 const maxRequestBytes = 32_000_000;
 
 const mimeTypes = {
@@ -94,6 +99,20 @@ function imageGenerationUrl(baseUrl) {
   return `${clean}/v1/images/generations`;
 }
 
+function imageEditUrl(baseUrl) {
+  const raw = String(baseUrl || defaultApiBaseUrl).trim() || defaultApiBaseUrl;
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  const clean = withProtocol.replace(/\/+$/, "");
+  const parsed = new URL(clean);
+  const allowedHosts = new Set(["yq66.ai", "api.openai.com"]);
+  if (!allowedHosts.has(parsed.hostname)) {
+    throw new Error(`Unsupported API host: ${parsed.hostname}`);
+  }
+  if (/\/images\/edits$/i.test(parsed.pathname)) return parsed.toString();
+  if (/\/v1$/i.test(parsed.pathname)) return `${clean}/images/edits`;
+  return `${clean}/v1/images/edits`;
+}
+
 function chatCompletionUrl(baseUrl) {
   const raw = String(baseUrl || defaultApiBaseUrl).trim() || defaultApiBaseUrl;
   const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
@@ -126,6 +145,107 @@ async function imageUrlToBase64(url) {
   if (!response.ok) throw new Error(`Image download HTTP ${response.status}`);
   const buffer = Buffer.from(await response.arrayBuffer());
   return buffer.toString("base64");
+}
+
+function runCommand(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { ...options, timeout: options.timeout || 180_000 }, (error, stdout, stderr) => {
+      if (error) {
+        const message = stderr || stdout || error.message;
+        reject(new Error(String(message).trim()));
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+async function newestFile(dir, extensions, sinceMs) {
+  let best = null;
+  async function visit(current) {
+    const entries = await readdir(current, { withFileTypes: true }).catch(() => []);
+    await Promise.all(entries.map(async (entry) => {
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) {
+        await visit(full);
+        return;
+      }
+      if (!extensions.includes(extname(entry.name).toLowerCase())) return;
+      const info = await stat(full).catch(() => null);
+      if (!info || info.mtimeMs < sinceMs) return;
+      if (!best || info.mtimeMs > best.mtimeMs) best = { path: full, mtimeMs: info.mtimeMs };
+    }));
+  }
+  await visit(dir);
+  return best?.path || "";
+}
+
+async function magentaPayloadToAudio(input) {
+  const prompt = String(input.prompt || "").trim();
+  if (!prompt) throw new Error("Prompt is required");
+  const backend = ["mlx", "jax"].includes(String(input.backend || "").toLowerCase()) ? String(input.backend).toLowerCase() : "mlx";
+  const model = String(input.model || "mrt2_small").trim() || "mrt2_small";
+  const duration = Math.max(1, Math.min(60, Number(input.duration || 4)));
+  const workDir = await mkdtemp(join(tmpdir(), "nomadic-magenta-"));
+  const startedAt = Date.now() - 1000;
+  try {
+    const mrtCommand = process.env.MAGENTA_RT_CLI || defaultMagentaCli;
+    const outputDir = process.env.MAGENTA_RT_OUTPUT_DIR || defaultMagentaOutputDir;
+    await rm(join(outputDir, `output_audio_${backend}_${model}.wav`), { force: true }).catch(() => {});
+    await runCommand(mrtCommand, [backend, "generate", "--prompt", prompt, "--duration", String(duration), `--model=${model}`], {
+      cwd: workDir,
+      env: {
+        ...process.env,
+        MAGENTA_HOME: process.env.MAGENTA_HOME || defaultMagentaHome,
+        PYTHONUTF8: "1",
+        PYTHONIOENCODING: "utf-8"
+      },
+      timeout: Math.max(180_000, duration * 45_000)
+    });
+    const wav = await newestFile(outputDir, [".wav", ".mp3", ".flac", ".aiff", ".aif"], startedAt)
+      || await newestFile(workDir, [".wav", ".mp3", ".flac", ".aiff", ".aif"], startedAt);
+    if (!wav) throw new Error("Magenta generated no audio file");
+    const bytes = await readFile(wav);
+    const ext = extname(wav).toLowerCase();
+    const mime = ext === ".mp3" ? "audio/mpeg" : ext === ".flac" ? "audio/flac" : ext === ".aiff" || ext === ".aif" ? "audio/aiff" : "audio/wav";
+    return {
+      audio_data_url: `data:${mime};base64,${bytes.toString("base64")}`
+    };
+  } catch (error) {
+    if (/ENOENT|not recognized|not found/i.test(String(error.message || error))) {
+      throw new Error("Magenta CLI not found. Install magenta-rt and run mrt models init/download first.");
+    }
+    throw error;
+  } finally {
+    rm(workDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+function imageBase64FromDataUrl(dataUrl) {
+  const text = String(dataUrl || "").trim();
+  const match = text.match(/^data:(image\/[a-z0-9.+-]+);base64,([\s\S]+)$/i);
+  if (!match) throw new Error("Image data must be a base64 data URL");
+  return {
+    mime: match[1].toLowerCase(),
+    base64: match[2].replace(/\s+/g, "")
+  };
+}
+
+function appendImageEditFields(form, input) {
+  const prompt = String(input.prompt || "").trim();
+  if (!prompt) throw new Error("Prompt is required");
+  const source = imageBase64FromDataUrl(input.image_data_url || input.imageDataUrl);
+  const extension = source.mime.includes("jpeg") ? "jpg" : source.mime.includes("webp") ? "webp" : "png";
+  form.append("model", input.model || "gpt-image-2-pro");
+  form.append("prompt", prompt);
+  form.append("image", new Blob([Buffer.from(source.base64, "base64")], { type: source.mime }), `image.${extension}`);
+  form.append("n", "1");
+  form.append("output_format", "png");
+  for (const key of ["size", "quality", "background"]) {
+    const value = String(input[key] || "auto").toLowerCase();
+    if (value && value !== "auto") form.append(key, value);
+    else if (key === "size") form.append(key, "auto");
+  }
 }
 
 function chatPayload(input) {
@@ -230,6 +350,42 @@ async function handleOpenAIImage(request, response) {
   }
 }
 
+async function handleOpenAIImageEdit(request, response) {
+  sendCors(response);
+  try {
+    const key = bearerToken(request) || process.env.OPENAI_API_KEY || "";
+    if (!key) throw new Error("Missing OpenAI API key");
+    const input = await readJson(request);
+    const apiUrl = imageEditUrl(input.base_url || input.baseUrl);
+    const form = new FormData();
+    appendImageEditFields(form, input);
+    const upstreamResponse = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`
+      },
+      body: form
+    });
+    const data = await upstreamResponse.json().catch(() => ({}));
+    if (!upstreamResponse.ok) {
+      const message = data?.error?.message || data?.message || `OpenAI HTTP ${upstreamResponse.status}`;
+      response.writeHead(upstreamResponse.status, { "Content-Type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ error: message }));
+      return;
+    }
+    let imageBase64 = data?.data?.[0]?.b64_json;
+    if (!imageBase64 && data?.data?.[0]?.url) {
+      imageBase64 = await imageUrlToBase64(data.data[0].url);
+    }
+    if (!imageBase64) throw new Error("OpenAI did not return b64_json");
+    response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ image_base64: imageBase64, revised_prompt: data?.data?.[0]?.revised_prompt || "" }));
+  } catch (error) {
+    response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ error: String(error.message || error) }));
+  }
+}
+
 async function handleOpenAIChat(request, response) {
   sendCors(response);
   try {
@@ -256,6 +412,19 @@ async function handleOpenAIChat(request, response) {
     if (!content) throw new Error("Chat response did not include content");
     response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     response.end(JSON.stringify({ content, usage: data?.usage || null }));
+  } catch (error) {
+    response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ error: String(error.message || error) }));
+  }
+}
+
+async function handleMagentaGenerate(request, response) {
+  sendCors(response);
+  try {
+    const input = await readJson(request);
+    const payload = await magentaPayloadToAudio(input);
+    response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify(payload));
   } catch (error) {
     response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
     response.end(JSON.stringify({ error: String(error.message || error) }));
@@ -325,6 +494,16 @@ createServer(async (request, response) => {
     response.end();
     return;
   }
+  if (request.url?.startsWith("/openai/image-edit")) {
+    if (request.method !== "POST") {
+      sendCors(response);
+      response.writeHead(405);
+      response.end("Method not allowed");
+      return;
+    }
+    await handleOpenAIImageEdit(request, response);
+    return;
+  }
   if (request.url?.startsWith("/openai/image")) {
     if (request.method !== "POST") {
       sendCors(response);
@@ -343,6 +522,16 @@ createServer(async (request, response) => {
       return;
     }
     await handleOpenAIChat(request, response);
+    return;
+  }
+  if (request.url?.startsWith("/magenta/generate")) {
+    if (request.method !== "POST") {
+      sendCors(response);
+      response.writeHead(405);
+      response.end("Method not allowed");
+      return;
+    }
+    await handleMagentaGenerate(request, response);
     return;
   }
   if (request.url?.startsWith("/roboflow/sam2")) {

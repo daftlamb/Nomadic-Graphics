@@ -213,8 +213,39 @@ const nodeGroups = [
           ["combo", "Mode", "Amplitude", ["Amplitude", "Onsets", "Waveform"]],
           ["slider", "Columns", 128, 32, 256],
           ["slider", "Rows", 64, 16, 160],
+          ["combo", "Normalize", "On", ["On", "Off"]],
           ["slider", "Contrast", 70, 10, 180],
           ["slider", "Smoothing", 35, 0, 90]
+        ]
+      },
+      {
+        type: "nomadic/audio/value",
+        title: "Audio Value",
+        input: "audio",
+        output: "value",
+        description: "Maps audio energy or transients into a numeric control value.",
+        widgets: [
+          ["combo", "Playback", "Live", ["Live", "Static"]],
+          ["combo", "Metric", "RMS", ["RMS", "Peak", "Onsets", "Duration"]],
+          ["combo", "Mode", "Average", ["Average", "Max", "Pulse Count"]],
+          ["slider", "Window", 180, 40, 900],
+          ["slider", "Min", 0, -200, 400],
+          ["slider", "Max", 180, -200, 600],
+          ["slider", "Threshold", 36, 0, 100],
+          ["slider", "Curve", 100, 20, 240]
+        ]
+      },
+      {
+        type: "nomadic/audio/player",
+        title: "Audio Player",
+        input: "audio",
+        output: "audio",
+        description: "Plays an audio stream and passes it through.",
+        widgets: [
+          ["button", "Play"],
+          ["button", "Stop"],
+          ["combo", "Loop", "Off", ["Off", "On"]],
+          ["slider", "Volume", 80, 0, 100]
         ]
       }
     ]
@@ -759,7 +790,13 @@ const nodeGroups = [
       {
         type: "nomadic/process/grid_slice",
         title: "Grid Slice",
-        input: "image",
+        inputs: [
+          { name: "Image", type: "image" },
+          { name: "Columns", type: "value", optional: true },
+          { name: "Rows", type: "value", optional: true },
+          { name: "Gap", type: "value", optional: true },
+          { name: "Jitter", type: "value", optional: true }
+        ],
         output: "tiles",
         description: "Cuts an image into movable raster tiles.",
         widgets: [
@@ -775,7 +812,10 @@ const nodeGroups = [
       {
         type: "nomadic/process/shuffle_tiles",
         title: "Shuffle Tiles",
-        input: "tiles",
+        inputs: [
+          { name: "TileSet", type: "tiles" },
+          { name: "Amount", type: "value", optional: true }
+        ],
         output: "tiles",
         description: "Reorders image tiles without vectorizing the image.",
         widgets: [
@@ -807,7 +847,8 @@ const nodeGroups = [
         title: "Stretch Tiles",
         inputs: [
           { name: "TileSet", type: "tiles" },
-          { name: "Selector", type: "selector", optional: true }
+          { name: "Selector", type: "selector", optional: true },
+          { name: "Amount", type: "value", optional: true }
         ],
         output: "tiles",
         description: "Stretches selected image tiles into smeared raster strips.",
@@ -851,7 +892,10 @@ const nodeGroups = [
       {
         type: "nomadic/process/stretch_cells",
         title: "Stretch Cells",
-        input: "cells",
+        inputs: [
+          { name: "CellSet", type: "cells" },
+          { name: "Amount", type: "value", optional: true }
+        ],
         output: "cells",
         description: "Stretches selected trace cells and the lines inside them.",
         widgets: [
@@ -1211,7 +1255,10 @@ const state = {
   isRestoring: false,
   draggingNodeForInsert: null,
   openaiApiKey: null,
-  mobileSamRuntime: null
+  mobileSamRuntime: null,
+  audioPlayer: null,
+  audioPreviewFrame: null,
+  lastAudioPreviewAt: 0
 };
 
 const graphCanvasElement = document.querySelector("#graphCanvas");
@@ -1728,6 +1775,12 @@ function runNode(def, inputs, props) {
   if (def.type === "nomadic/audio/features_to_field") {
     return audioFeatureField(inputs[0], props);
   }
+  if (def.type === "nomadic/audio/value") {
+    return audioControlValue(inputs[0], props);
+  }
+  if (def.type === "nomadic/audio/player") {
+    return inputs[0] && inputs[0].ngType === "Audio" ? inputs[0] : null;
+  }
   if (def.type === "nomadic/source/image_field_input") {
     return NomadicGeometry.createImageField({
       pixels: props.image_pixels,
@@ -1987,6 +2040,10 @@ function runNode(def, inputs, props) {
   if (def.type === "nomadic/process/grid_slice") {
     return NomadicGeometry.gridSliceImage(input, {
       mode: props.mode,
+      columnsValue: inputs[1],
+      rowsValue: inputs[2],
+      gapValue: inputs[3],
+      jitterValue: inputs[4],
       columns: props.columns,
       rows: props.rows,
       gap: props.gap,
@@ -1998,6 +2055,7 @@ function runNode(def, inputs, props) {
   if (def.type === "nomadic/process/shuffle_tiles") {
     return NomadicGeometry.shuffleTiles(input, {
       mode: props.mode,
+      amountValue: inputs[1],
       amount: props.amount,
       seed: props.seed
     }, state.seed);
@@ -2015,6 +2073,7 @@ function runNode(def, inputs, props) {
   if (def.type === "nomadic/process/stretch_tiles") {
     return NomadicGeometry.stretchTiles(input, {
       selector: inputs[1],
+      amountValue: inputs[2],
       axis: props.axis,
       anchor: props.anchor,
       pixelMode: props.pixel_mode,
@@ -2043,6 +2102,7 @@ function runNode(def, inputs, props) {
   }
   if (def.type === "nomadic/process/stretch_cells") {
     return NomadicGeometry.stretchCells(input, {
+      amountValue: inputs[1],
       axis: props.axis,
       anchor: props.anchor,
       amount: props.amount,
@@ -2200,6 +2260,12 @@ function handleNodeButton(node, def, name) {
   if (def.type === "nomadic/audio/magenta_music" && name === "Generate") {
     generateMagentaMusic(node);
   }
+  if (def.type === "nomadic/audio/player" && name === "Play") {
+    playAudioNode(node);
+  }
+  if (def.type === "nomadic/audio/player" && name === "Stop") {
+    stopAudioNode(node);
+  }
   if (def.type === "nomadic/source/svg_input" && name === "Load SVG") {
     readLocalFile(".svg,image/svg+xml", "text").then((text) => {
       if (!text) return;
@@ -2275,6 +2341,10 @@ function handleNodeWidgetChange(node, def, name) {
   }
   if (def.type === "nomadic/audio/magenta_music" && ["Prompt", "Model", "Duration", "Backend"].includes(name)) {
     node.properties.ai_status = "needs Generate";
+    return;
+  }
+  if (def.type === "nomadic/audio/player" && ["Loop", "Volume"].includes(name)) {
+    updateAudioPlayerNode(node);
     return;
   }
   if ((def.type !== "nomadic/source/image_input" && def.type !== "nomadic/source/image_field_input" && def.type !== "nomadic/source/gpt_image") || name !== "Scale") return;
@@ -2543,6 +2613,83 @@ async function applyAudioDataUrl(node, dataUrl, label) {
   node.properties.ai_status = "audio ready";
 }
 
+function updateAudioPlayerNode(node) {
+  if (!node || state.audioPlayer?.nodeId !== node.id || !state.audioPlayer.element) return;
+  state.audioPlayer.element.loop = node.properties.loop === "On";
+  state.audioPlayer.element.volume = clampNumber(Number(node.properties.volume || 80) / 100, 0, 1);
+}
+
+function startAudioPreviewLoop() {
+  if (state.audioPreviewFrame) return;
+  const tick = (time) => {
+    if (!state.audioPlayer?.element || state.audioPlayer.element.paused || state.audioPlayer.element.ended) {
+      state.audioPreviewFrame = null;
+      return;
+    }
+    if (time - state.lastAudioPreviewAt > 1000 / 24) {
+      state.lastAudioPreviewAt = time;
+      runGraphOnce();
+    }
+    state.audioPreviewFrame = window.requestAnimationFrame(tick);
+  };
+  state.audioPreviewFrame = window.requestAnimationFrame(tick);
+}
+
+function stopAudioPreviewLoop() {
+  if (!state.audioPreviewFrame) return;
+  window.cancelAnimationFrame(state.audioPreviewFrame);
+  state.audioPreviewFrame = null;
+}
+
+function stopAudioNode(node = null) {
+  const activeNode = node || graph?._nodes?.find((item) => item.id === state.audioPlayer?.nodeId) || null;
+  if (state.audioPlayer?.element) {
+    state.audioPlayer.element.pause();
+    try {
+      state.audioPlayer.element.currentTime = 0;
+    } catch (error) {
+      console.warn("Could not reset audio time", error);
+    }
+  }
+  stopAudioPreviewLoop();
+  state.audioPlayer = null;
+  if (activeNode?.properties) activeNode.properties.ai_status = "stopped";
+  graphCanvas?.setDirty(true, true);
+}
+
+async function playAudioNode(node) {
+  runGraphOnce();
+  const audio = node.getInputData(0);
+  if (!audio || audio.ngType !== "Audio" || !audio.dataUrl) {
+    node.properties.ai_status = "needs audio";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+  stopAudioNode();
+  const element = new Audio(audio.dataUrl);
+  element.loop = node.properties.loop === "On";
+  element.volume = clampNumber(Number(node.properties.volume || 80) / 100, 0, 1);
+  state.audioPlayer = { nodeId: node.id, element, audio };
+  node.properties.ai_status = "playing";
+  element.addEventListener("ended", () => {
+    if (element.loop || state.audioPlayer?.element !== element) return;
+    stopAudioPreviewLoop();
+    state.audioPlayer = null;
+    node.properties.ai_status = "ended";
+    runGraphOnce();
+    graphCanvas?.setDirty(true, true);
+  });
+  try {
+    await element.play();
+    startAudioPreviewLoop();
+  } catch (error) {
+    stopAudioPreviewLoop();
+    state.audioPlayer = null;
+    node.properties.ai_status = `error: ${String(error.message || error).slice(0, 48)}`;
+  }
+  graphCanvas?.setDirty(true, true);
+}
+
 async function analyzeAudioDataUrl(dataUrl) {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) throw new Error("Web Audio is not available");
@@ -2598,7 +2745,10 @@ function audioFeatureField(audio, props = {}) {
   const smoothing = Number(props.smoothing || 0) / 100;
   const source = audioFeatureSeries(audio, props.mode);
   if (!source.length) return null;
-  const series = resampleSeries(source, cols);
+  const rawSeries = resampleSeries(source, cols);
+  const peak = Math.max(...rawSeries.map((value) => Math.abs(Number(value || 0))), 0);
+  const normalize = props.normalize !== "Off" && peak > 0;
+  const series = normalize ? rawSeries.map((value) => clampNumber(Math.abs(Number(value || 0)) / peak, 0, 1)) : rawSeries.map((value) => clampNumber(Math.abs(Number(value || 0)), 0, 1));
   const values = [];
   for (let row = 0; row < rows; row += 1) {
     const y = rows <= 1 ? 0 : row / (rows - 1);
@@ -2607,8 +2757,10 @@ function audioFeatureField(audio, props = {}) {
       const center = series[col] || 0;
       const right = series[Math.min(cols - 1, col + 1)] || 0;
       const smooth = center * (1 - smoothing) + ((left + center + right) / 3) * smoothing;
+      const shaped = Math.pow(smooth, 1 / Math.max(0.1, contrast));
       const ridge = 1 - Math.abs(y - 0.5) * 2;
-      values.push(clampNumber(Math.pow(smooth, 1 / Math.max(0.1, contrast)) * (0.22 + ridge * 0.78), 0, 1));
+      const band = Math.abs(y - 0.5) <= shaped * 0.5 ? 1 : ridge * 0.35;
+      values.push(clampNumber(shaped * (0.12 + ridge * 0.52 + band * 0.36), 0, 1));
     }
   }
   return {
@@ -2624,7 +2776,9 @@ function audioFeatureField(audio, props = {}) {
     history: (audio.history || ["Audio"]).concat([`Audio Field(${props.mode || "Amplitude"})`]),
     stats: {
       mode: props.mode || "Amplitude",
-      duration: `${Number(audio.duration || 0).toFixed(2)}s`
+      duration: `${Number(audio.duration || 0).toFixed(2)}s`,
+      peak: peak.toFixed(3),
+      normalized: normalize ? "On" : "Off"
     }
   };
 }
@@ -2633,6 +2787,85 @@ function audioFeatureSeries(audio, mode) {
   if (mode === "Waveform") return audio.peaks || [];
   if (mode === "Onsets") return audio.onsets || [];
   return audio.rms || audio.peaks || [];
+}
+
+function audioControlValue(audio, props = {}) {
+  if (!audio || audio.ngType !== "Audio") return null;
+  const metric = props.metric || "RMS";
+  const mode = props.mode || "Average";
+  let source = [];
+  if (metric === "Peak") source = audio.peaks || [];
+  else if (metric === "Onsets") source = audio.onsets || [];
+  else if (metric === "Duration") source = [clampNumber(Number(audio.duration || 0) / 16, 0, 1)];
+  else source = audio.rms || audio.peaks || [];
+  if (!source.length) return null;
+
+  const threshold = clampNumber(Number(props.threshold || 0) / 100, 0, 1);
+  const normalizedSeries = normalizeSeries01(source.map((value) => Math.abs(Number(value || 0))));
+  const liveState = liveAudioWindow(audio, normalizedSeries, props);
+  const activeSeries = liveState.series.length ? liveState.series : normalizedSeries;
+  const amount = audioSeriesAmount(activeSeries, mode, threshold);
+
+  const curve = Number(props.curve || 100) / 100;
+  const shaped = Math.pow(clampNumber(amount, 0, 1), 1 / Math.max(0.05, curve));
+  const min = Number(props.min ?? 0);
+  const max = Number(props.max ?? 180);
+  const value = min + (max - min) * shaped;
+  return {
+    ngType: "Value",
+    label: `Audio Value(${roundDisplay(value)})`,
+    value,
+    history: (audio.history || ["Audio"]).concat([`Audio Value(${metric}/${mode})`]),
+    stats: {
+      metric,
+      mode,
+      playback: liveState.live ? `${roundDisplay(liveState.time)}s` : "Static",
+      normalized: roundDisplay(amount),
+      value: roundDisplay(value)
+    }
+  };
+}
+
+function liveAudioWindow(audio, series, props = {}) {
+  const player = state.audioPlayer;
+  const wantsLive = props.playback !== "Static";
+  const matchesPlayer = player?.audio?.dataUrl && player.audio.dataUrl === audio.dataUrl;
+  const element = player?.element;
+  if (!wantsLive || !matchesPlayer || !element || element.paused || !series.length) {
+    return { live: false, time: 0, series: [] };
+  }
+  const duration = Number(audio.duration || element.duration || 0);
+  const progress = duration > 0 ? clampNumber(element.currentTime / duration, 0, 1) : 0;
+  const center = Math.round(progress * (series.length - 1));
+  const windowMs = Number(props.window || 180);
+  const binsPerSecond = duration > 0 ? series.length / duration : series.length;
+  const halfWindow = Math.max(1, Math.round((windowMs / 1000) * binsPerSecond * 0.5));
+  const start = Math.max(0, center - halfWindow);
+  const end = Math.min(series.length, center + halfWindow + 1);
+  return {
+    live: true,
+    time: Number(element.currentTime || 0),
+    series: series.slice(start, end)
+  };
+}
+
+function audioSeriesAmount(series, mode, threshold) {
+  if (!series.length) return 0;
+  if (mode === "Max") return Math.max(...series);
+  if (mode === "Pulse Count") {
+    return series.filter((value) => value >= threshold).length / Math.max(1, series.length);
+  }
+  return series.reduce((sum, value) => sum + value, 0) / series.length;
+}
+
+function normalizeSeries01(series) {
+  const peak = Math.max(...series.map((value) => Math.abs(Number(value || 0))), 0);
+  if (peak <= 0) return series.map(() => 0);
+  return series.map((value) => clampNumber(Math.abs(Number(value || 0)) / peak, 0, 1));
+}
+
+function roundDisplay(value) {
+  return Math.round(Number(value || 0) * 100) / 100;
 }
 
 function resampleSeries(series, count) {

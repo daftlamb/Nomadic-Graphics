@@ -559,12 +559,12 @@
 
   function gridSliceImage(image, options = {}, seed = 0) {
     if (!isType(image, "Image") || !image.cols || !image.rows) return null;
-    const columns = Math.max(1, Math.round(Number(options.columns || 8)));
-    const rows = Math.max(1, Math.round(Number(options.rows || 6)));
+    const columns = Math.max(1, Math.round(scalarValue(options.columnsValue, Number(options.columns || 8))));
+    const rows = Math.max(1, Math.round(scalarValue(options.rowsValue, Number(options.rows || 6))));
     const mode = options.mode || "Regular";
-    const gap = Math.max(0, Number(options.gap || 0));
+    const gap = Math.max(0, scalarValue(options.gapValue, Number(options.gap || 0)));
     const cropPadding = Math.max(0, Number(options.cropPadding || 0));
-    const jitter = Math.max(0, Number(options.jitter || 0));
+    const jitter = Math.max(0, scalarValue(options.jitterValue, Number(options.jitter || 0)));
     const localSeed = seed + Number(options.seed || 0) * 1009;
     const xBreaks = tileGridBreaks(columns, mode, localSeed + 11);
     const yBreaks = tileGridBreaks(rows, mode, localSeed + 17);
@@ -631,7 +631,7 @@
   function shuffleTiles(tileSet, options = {}, seed = 0) {
     if (!isType(tileSet, "TileSet")) return null;
     const tiles = tileSet.tiles || [];
-    const amount = clamp(Number(options.amount ?? 100) / 100);
+    const amount = clamp(scalarValue(options.amountValue, Number(options.amount ?? 100)) / 100);
     const mode = options.mode || "Random";
     const localSeed = seed + Number(options.seed || 0) * 1009;
     const order = tileShuffleOrder(tiles, mode, amount, localSeed);
@@ -860,7 +860,7 @@
 
   function stretchTiles(tileSet, options = {}, seed = 0) {
     if (!isType(tileSet, "TileSet")) return null;
-    const amount = Math.max(0, Number(options.amount || 120)) / 100;
+    const amount = Math.max(0, scalarValue(options.amountValue, Number(options.amount || 120))) / 100;
     const chance = clamp(Number(options.chance ?? 42) / 100);
     const axisMode = options.axis || "Horizontal";
     const anchor = options.anchor || "Center";
@@ -1025,7 +1025,7 @@
 
   function stretchCells(cellSet, options = {}, seed = 0) {
     if (!isType(cellSet, "CellSet")) return null;
-    const amount = Math.max(0, Number(options.amount || 120)) / 100;
+    const amount = Math.max(0, scalarValue(options.amountValue, Number(options.amount || 120))) / 100;
     const chance = clamp(Number(options.chance ?? 42) / 100);
     const axisMode = options.axis || "Horizontal";
     const anchor = options.anchor || "Center";

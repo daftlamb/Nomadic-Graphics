@@ -2,15 +2,16 @@ import { createServer } from "node:http";
 import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
+import { platform, tmpdir } from "node:os";
 import { execFile } from "node:child_process";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const port = Number(process.env.PORT || 8788);
 const defaultApiBaseUrl = process.env.OPENAI_API_BASE_URL || process.env.NEWAPI_BASE_URL || "https://yq66.ai";
-const defaultMagentaCli = "E:\\AIEnvs\\magenta-rt\\Scripts\\mrt.exe";
-const defaultMagentaHome = "E:\\AIModels\\Magenta";
-const defaultMagentaOutputDir = "E:\\AIModels\\Magenta\\magenta-rt-v2\\outputs";
+const isWindows = platform() === "win32";
+const defaultMagentaCli = isWindows ? "E:\\AIEnvs\\magenta-rt\\Scripts\\mrt.exe" : "/Volumes/DOC/AI ENV/magenta-rt/bin/mrt";
+const defaultMagentaHome = isWindows ? "E:\\AIModels\\Magenta" : "/Volumes/DOC/AI ENV/Magenta";
+const defaultMagentaOutputDir = isWindows ? "E:\\AIModels\\Magenta\\magenta-rt-v2\\outputs" : "/Volumes/DOC/AI ENV/Magenta/magenta-rt-v2/outputs";
 const maxRequestBytes = 32_000_000;
 
 const mimeTypes = {

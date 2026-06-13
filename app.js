@@ -28,6 +28,7 @@ const TEXT_FONT_OPTIONS = [
 ];
 const COLOR_PALETTE_OPTIONS = ["Survey", "Warm", "Cool", "Ink", "Pop", "Neon", "Riso", "Candy", "Signal", "Random"];
 const DEFAULT_MAGENTA_BACKEND = /Win/i.test(navigator.platform || "") ? "jax" : "mlx";
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
 
 const DATA_TYPES = {
   audio: "Audio",
@@ -109,8 +110,26 @@ const nodeGroups = [
         ]
       },
       {
+        type: "nomadic/source/line_shape",
+        title: "Line Shape",
+        output: "shape",
+        description: "Creates a straight, waved, or zigzag line shape.",
+        widgets: [
+          ["combo", "Mode", "Wave", ["Line", "Wave", "Zigzag"]],
+          ["slider", "Length", 760, 120, 980],
+          ["slider", "Amplitude", 90, 0, 260],
+          ["slider", "Frequency", 3, 1, 12],
+          ["slider", "Angle", 0, -180, 180],
+          ["slider", "Thickness", 18, 1, 120]
+        ]
+      },
+      {
         type: "nomadic/source/random_points",
         title: "Random Points",
+        inputs: [
+          { name: "Count", type: "value", optional: true },
+          { name: "Spread", type: "value", optional: true }
+        ],
         output: "points",
         description: "Seeds a point set without a parent shape.",
         widgets: [
@@ -154,13 +173,31 @@ const nodeGroups = [
         ]
       },
       {
+        type: "nomadic/source/video_input",
+        title: "Video Input",
+        output: "image",
+        description: "Loads a video and outputs a sampled frame as an image for downstream image nodes.",
+        widgets: [
+          ["button", "Load Video"],
+          ["button", "Play"],
+          ["button", "Stop"],
+          ["button", "Capture Frame"],
+          ["slider", "Time", 0, 0, 100],
+          ["slider", "FPS", 8, 1, 30],
+          ["combo", "Loop", "On", ["Off", "On"]],
+          ["combo", "Blend", "Normal", ["Normal", "Multiply", "Screen", "Overlay", "Darken", "Lighten"]],
+          ["slider", "Scale", 100, 40, 260],
+          ["slider", "Opacity", 100, 0, 100]
+        ]
+      },
+      {
         type: "nomadic/source/gpt_image",
         title: "GPT Image",
         output: "image",
         description: "Generates a raster image through a local OpenAI-compatible proxy.",
         widgets: [
           ["button", "Generate"],
-          ["text", "API URL", "https://yq66.ai"],
+          ["text", "API URL", ""],
           ["text", "Prompt", "A stark black and white editorial poster texture, abstract topographic lines, printed ink grain"],
           ["combo", "Model", "gpt-image-2-pro", ["gpt-image-2-pro", "gpt-image-2", "gpt-image-1", "gpt-image-1-mini", "gpt-image-1.5"]],
           ["combo", "Size", "1024x1024", ["1024x1024", "1536x1024", "1024x1536", "2048x2048", "2048x1152", "3840x2160", "2160x3840", "Auto"]],
@@ -201,7 +238,7 @@ const nodeGroups = [
           ["combo", "Model", "mrt2_small", ["mrt2_small", "mrt2_base"]],
           ["slider", "Duration", 4, 2, 16],
           ["combo", "Backend", DEFAULT_MAGENTA_BACKEND, ["mlx", "jax"]],
-          ["combo", "Cache", "On", ["On", "Off"]]
+          ["combo", "Cache", "Off", ["Off", "On"]]
         ]
       },
       {
@@ -237,6 +274,104 @@ const nodeGroups = [
         ]
       },
       {
+        type: "nomadic/audio/lfo_value",
+        title: "LFO Value",
+        output: "value",
+        description: "Generates a low-frequency control value for parameter modulation.",
+        widgets: [
+          ["combo", "Wave", "Sine", ["Sine", "Triangle", "Saw", "Square", "Random Step"]],
+          ["combo", "Sync", "Audio", ["Audio", "Clock"]],
+          ["slider", "Rate", 0.5, 0.02, 12],
+          ["slider", "Min", 0, -200, 400],
+          ["slider", "Max", 100, -200, 600],
+          ["slider", "Phase", 0, 0, 360],
+          ["slider", "Seed", 0, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/audio/warp",
+        title: "Audio Warp",
+        inputs: [
+          { name: "Audio", type: "audio" },
+          { name: "Rate", type: "value", optional: true }
+        ],
+        output: "audio",
+        description: "Passes audio with playback rate and segment metadata.",
+        widgets: [
+          ["slider", "Rate", 100, 25, 400],
+          ["slider", "Start", 0, 0, 100],
+          ["slider", "End", 100, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/audio/gain",
+        title: "Audio Gain",
+        input: "audio",
+        output: "audio",
+        description: "Applies gain, peak normalization, and optional limiting to an audio clip.",
+        widgets: [
+          ["button", "Apply"],
+          ["combo", "Mode", "Normalize", ["Normalize", "Gain dB"]],
+          ["slider", "Gain dB", 12, -24, 36],
+          ["slider", "Target Peak", 90, 10, 100],
+          ["combo", "Limiter", "On", ["On", "Off"]]
+        ]
+      },
+      {
+        type: "nomadic/audio/reverse",
+        title: "Audio Reverse",
+        input: "audio",
+        output: "audio",
+        description: "Reverses an audio clip into a new playable sample.",
+        widgets: [
+          ["button", "Apply"]
+        ]
+      },
+      {
+        type: "nomadic/audio/beat_slice",
+        title: "Beat Slice",
+        input: "audio",
+        output: "audio",
+        description: "Cuts audio into beat-like slices for stutter, gating, and shuffled samples.",
+        widgets: [
+          ["button", "Apply"],
+          ["combo", "Mode", "Stutter", ["Stutter", "Gate", "Shuffle"]],
+          ["slider", "Threshold", 36, 0, 100],
+          ["slider", "Slice ms", 180, 30, 900],
+          ["slider", "Repeat", 2, 1, 8],
+          ["slider", "Seed", 0, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/audio/granular",
+        title: "Granular",
+        input: "audio",
+        output: "audio",
+        description: "Rebuilds audio from small grains for jittery sampled textures.",
+        widgets: [
+          ["button", "Apply"],
+          ["slider", "Grain ms", 90, 12, 420],
+          ["slider", "Step ms", 60, 8, 320],
+          ["slider", "Jitter", 35, 0, 100],
+          ["slider", "Reverse", 18, 0, 100],
+          ["slider", "Seed", 0, 0, 100]
+        ]
+      },
+      {
+        type: "nomadic/audio/points",
+        title: "Audio Points",
+        input: "audio",
+        output: "points",
+        description: "Maps audio waveform, peaks, or transients into a point set.",
+        widgets: [
+          ["combo", "Mode", "Onsets", ["Onsets", "Amplitude", "Waveform"]],
+          ["slider", "Count", 240, 32, 900],
+          ["slider", "Radius", 260, 40, 420],
+          ["slider", "Spread", 120, 0, 320],
+          ["slider", "Threshold", 24, 0, 100]
+        ]
+      },
+      {
         type: "nomadic/audio/player",
         title: "Audio Player",
         input: "audio",
@@ -245,7 +380,10 @@ const nodeGroups = [
         widgets: [
           ["button", "Play"],
           ["button", "Stop"],
+          ["button", "Rewind"],
+          ["button", "Forward"],
           ["combo", "Loop", "Off", ["Off", "On"]],
+          ["slider", "Skip", 2, 0.25, 10],
           ["slider", "Volume", 80, 0, 100]
         ]
       }
@@ -262,7 +400,7 @@ const nodeGroups = [
         description: "Edits an input image through the local OpenAI-compatible proxy.",
         widgets: [
           ["button", "Edit"],
-          ["text", "API URL", "https://yq66.ai"],
+          ["text", "API URL", ""],
           ["text", "Prompt", "Change the image into a high fashion editorial poster while preserving the main subject."],
           ["combo", "Model", "gpt-image-2-pro", ["gpt-image-2-pro", "gpt-image-2", "gpt-image-1"]],
           ["combo", "Size", "1024x1024", ["1024x1024", "1536x1024", "1024x1536", "2048x2048", "2048x1152", "3840x2160", "2160x3840", "Auto"]],
@@ -324,7 +462,7 @@ const nodeGroups = [
         description: "Reads an image and returns structured semantic design notes.",
         widgets: [
           ["button", "Analyze"],
-          ["text", "API URL", "https://yq66.ai"],
+          ["text", "API URL", ""],
           ["text", "Vision Model", "gpt-4o-mini"],
           ["text", "Question", "Describe the image for graphic design: key subjects, regions, visual texture, and patch ideas."],
           ["combo", "Detail", "Low", ["Low", "High"]]
@@ -341,7 +479,7 @@ const nodeGroups = [
         description: "Finds a named region in an image and converts it into a soft mask field.",
         widgets: [
           ["button", "Find Region"],
-          ["text", "API URL", "https://yq66.ai"],
+          ["text", "API URL", ""],
           ["text", "Vision Model", "gpt-4o-mini"],
           ["text", "Target", "main subject"],
           ["slider", "Feather", 12, 0, 40],
@@ -417,7 +555,7 @@ const nodeGroups = [
         description: "Samples a shape into usable growth points.",
         widgets: [
           ["combo", "Mode", "Boundary", ["Boundary", "Interior", "Mixed"]],
-          ["slider", "Count", 360, 60, 900]
+          ["slider", "Count", 900, 60, 3000]
         ]
       },
       {
@@ -707,7 +845,11 @@ const nodeGroups = [
       {
         type: "nomadic/process/smooth",
         title: "Smooth",
-        input: "traces",
+        inputs: [
+          { name: "TraceSet", type: "traces" },
+          { name: "Amount", type: "value", optional: true },
+          { name: "Passes", type: "value", optional: true }
+        ],
         output: "traces",
         description: "Softens hard trace segments into smoother paths.",
         widgets: [
@@ -718,7 +860,11 @@ const nodeGroups = [
       {
         type: "nomadic/process/curve_tension",
         title: "Curve Tension",
-        input: "traces",
+        inputs: [
+          { name: "TraceSet", type: "traces" },
+          { name: "Tension", type: "value", optional: true },
+          { name: "Sag", type: "value", optional: true }
+        ],
         output: "traces",
         description: "Changes trace curvature and flow tension.",
         widgets: [
@@ -740,7 +886,10 @@ const nodeGroups = [
       {
         type: "nomadic/process/erode",
         title: "Erode",
-        input: "traces",
+        inputs: [
+          { name: "TraceSet", type: "traces" },
+          { name: "Amount", type: "value", optional: true }
+        ],
         output: "traces",
         description: "Breaks and roughens traces.",
         widgets: [["slider", "Amount", 42, 0, 100]]
@@ -748,7 +897,12 @@ const nodeGroups = [
       {
         type: "nomadic/process/dither",
         title: "Dither",
-        input: "image,tiles,layers",
+        inputs: [
+          { name: "Data", type: "image,tiles,layers" },
+          { name: "Threshold", type: "value", optional: true },
+          { name: "Scale", type: "value", optional: true },
+          { name: "Mix", type: "value", optional: true }
+        ],
         output: "image,layers",
         description: "Applies real raster dithering to images, tile sets, or layer stacks.",
         widgets: [
@@ -915,12 +1069,13 @@ const nodeGroups = [
       {
         type: "nomadic/material/image_weathering",
         title: "Image Weathering",
-        input: "image,tiles,layers",
-        output: "image,layers",
-        description: "Ages raster images, tile sets, or labeled layers with paper, photocopy, toner, and transfer artifacts.",
+        input: "image,tiles,points,artifact,layers",
+        output: "image,points,artifact,layers",
+        description: "Ages raster images, point sets, artifacts, tile sets, or labeled layers with paper, photocopy, toner, and transfer artifacts.",
         widgets: [
           ["combo", "Mode", "Photocopy", ["Photocopy", "Print Transfer", "Newsprint", "Archive Dust"]],
           ["combo", "Tone", "Neutral", ["Neutral", "Tint", "Duotone"]],
+          ["combo", "Quality", "Fast", ["Fast", "Balanced", "Full"]],
           ["combo", "Ink Color", "Signal Red", ["Signal Red", "Vermilion", "Ink", "Moss", "Water", "Clay"]],
           ["combo", "Paper Color", "Paper", ["Paper", "White", "Sand", "Moss", "Water", "Clay"]],
           ["slider", "Tone Amount", 0, 0, 100],
@@ -1015,11 +1170,27 @@ const nodeGroups = [
         ]
       },
       {
+        type: "nomadic/style/colorize",
+        title: "Colorize",
+        input: "image,tiles,layers",
+        output: "image,tiles,layers",
+        description: "Maps black/white or grayscale raster data into a lightweight color treatment.",
+        widgets: [
+          ["combo", "Mode", "Duotone", ["Duotone", "Tint", "Invert Duotone", "Palette"]],
+          ["combo", "Ink", "Signal Red", ["Ink", "Moss", "Water", "Clay", "Sand", "Paper", "Signal Red", "Vermilion", "Lemon", "Cyan", "Magenta"]],
+          ["combo", "Paper", "Paper", ["Paper", "Ink", "Moss", "Water", "Clay", "Sand", "Signal Red", "Vermilion", "Lemon", "Cyan", "Magenta"]],
+          ["combo", "Palette", "Riso", COLOR_PALETTE_OPTIONS],
+          ["slider", "Amount", 100, 0, 100],
+          ["slider", "Contrast", 50, 0, 100],
+          ["slider", "Seed", 0, 0, 100]
+        ]
+      },
+      {
         type: "nomadic/style/random_stroke_color",
         title: "Random Color",
-        input: "image,tiles,cells,shape,traces,artifact,layers",
-        output: "image,tiles,cells,shape,traces,artifact,layers",
-        description: "Assigns vivid palette colors to raster, tile, cell, stroke, and fill data.",
+        input: "image,tiles,cells,shape,points,traces,artifact,layers",
+        output: "image,tiles,cells,shape,points,traces,artifact,layers",
+        description: "Assigns vivid palette colors to raster, tile, cell, point, stroke, and fill data.",
         widgets: [
           ["combo", "Target", "Both", ["Both", "Stroke", "Fill"]],
           ["combo", "Palette", "Pop", COLOR_PALETTE_OPTIONS],
@@ -1035,8 +1206,8 @@ const nodeGroups = [
         output: "shape,points,traces,artifact,layers",
         description: "Assigns varied scale to points, layers, and visual data.",
         widgets: [
-          ["slider", "Min", 45, 5, 160],
-          ["slider", "Max", 140, 10, 260],
+          ["slider", "Min", 20, 1, 220],
+          ["slider", "Max", 320, 10, 800],
           ["slider", "Seed", 0, 0, 100]
         ]
       },
@@ -1215,10 +1386,16 @@ const nodeDefs = new Map(nodeGroups.flatMap((group) => group.nodes.map((node) =>
 const PATCH_STORAGE_KEY = "nomadic-graphics.patch.v1";
 const THEME_STORAGE_KEY = "nomadic-graphics.theme";
 const PANEL_STATE_STORAGE_KEY = "nomadic-graphics.panels";
+const SETTINGS_STORAGE_KEY = "nomadic-graphics.settings.v1";
+const GUIDE_SEEN_STORAGE_KEY = "nomadic-graphics.guide-seen.v1";
+const GUIDE_LANGUAGE_STORAGE_KEY = "nomadic-graphics.guide-language.v1";
 const API_KEY_STORAGE_KEY = "nomadic-graphics.api-key";
 const ROBOFLOW_API_KEY_STORAGE_KEY = "nomadic-graphics.roboflow-api-key";
 const GPT_IMAGE_CACHE_DB = "nomadic-graphics-cache";
 const GPT_IMAGE_CACHE_STORE = "gpt_images";
+const RECOVERY_CACHE_DB = "nomadic-graphics-recovery";
+const RECOVERY_CACHE_STORE = "snapshots";
+const RECOVERY_CACHE_KEY = "latest";
 const MAGENTA_AUDIO_PROXY_URL = "http://127.0.0.1:8788/magenta/generate";
 const OPENAI_IMAGE_PROXY_URL = "http://127.0.0.1:8788/openai/image";
 const OPENAI_IMAGE_EDIT_PROXY_URL = "http://127.0.0.1:8788/openai/image-edit";
@@ -1252,14 +1429,23 @@ const state = {
   undoStack: [],
   undoIndex: -1,
   undoTimer: null,
+  recoveryTimer: null,
   lastUndoSnapshot: "",
   isRestoring: false,
   draggingNodeForInsert: null,
+  marquee: null,
+  canvasPan: null,
+  suppressNextCanvasClick: false,
+  lastPointerButton: null,
+  spacePan: false,
   openaiApiKey: null,
+  settings: {},
   mobileSamRuntime: null,
   audioPlayer: null,
   audioPreviewFrame: null,
-  lastAudioPreviewAt: 0
+  lastAudioPreviewAt: 0,
+  videoPlayers: new Map(),
+  videoRecording: null
 };
 
 const graphCanvasElement = document.querySelector("#graphCanvas");
@@ -1276,9 +1462,91 @@ const savePatchButton = document.querySelector("#savePatchButton");
 const loadPatchButton = document.querySelector("#loadPatchButton");
 const exportPatchButton = document.querySelector("#exportPatchButton");
 const openPatchButton = document.querySelector("#openPatchButton");
+const recordVideoButton = document.querySelector("#recordVideoButton");
+const stopRecordVideoButton = document.querySelector("#stopRecordVideoButton");
+const settingsButton = document.querySelector("#settingsButton");
+const guideButton = document.querySelector("#guideButton");
+const licenseButton = document.querySelector("#licenseButton");
 const themeSelect = document.querySelector("#themeSelect");
 const toggleLibraryPanel = document.querySelector("#toggleLibraryPanel");
 const toggleInspectorPanel = document.querySelector("#toggleInspectorPanel");
+const guideModal = document.querySelector("#guideModal");
+const settingsModal = document.querySelector("#settingsModal");
+const licenseModal = document.querySelector("#licenseModal");
+const settingsForm = document.querySelector("#settingsForm");
+const licenseForm = document.querySelector("#licenseForm");
+const openSettingsFromGuide = document.querySelector("#openSettingsFromGuide");
+const finishGuideButton = document.querySelector("#finishGuideButton");
+const clearSettingsButton = document.querySelector("#clearSettingsButton");
+const guideLanguageSelect = document.querySelector("#guideLanguageSelect");
+const licenseStatus = document.querySelector("#licenseStatus");
+
+const GUIDE_TRANSLATIONS = {
+  en: {
+    guideEyebrow: "First Run Guide",
+    guideTitle: "Welcome to Nomadic Graphics",
+    guideAiTitle: "Choose AI Provider",
+    guideAiBody: "GPT Image and Vision nodes need an API key. Use OpenAI directly, or enter an OpenAI-compatible Base URL in Settings.",
+    guideAudioTitle: "Optional Audio Models",
+    guideAudioBody: "Magenta RT is not bundled because the models are large. Download it separately, then set the local CLI and model paths.",
+    guideSamTitle: "Built-in Mobile SAM",
+    guideSamBody: "Mobile SAM and ONNX Runtime are included, so local segmentation works without extra model downloads.",
+    guidePrivacyTitle: "Cache and Privacy",
+    guidePrivacyBody: "Generated images, audio, and recovery snapshots stay on this device. API keys are device settings and are not saved into patch files.",
+    openSettings: "Open Settings",
+    startPatching: "Start Patching",
+    settingsEyebrow: "Device Settings",
+    settingsTitle: "Settings",
+    apiBaseUrl: "OpenAI-compatible Base URL",
+    apiKey: "API Key",
+    roboflowKey: "Roboflow API Key",
+    magentaCli: "Magenta RT CLI",
+    magentaHome: "Magenta Model/Home Folder",
+    magentaOutput: "Magenta Output Folder",
+    settingsNote: "Leave Base URL blank to use OpenAI's default endpoint. Magenta is optional and only needed by Magenta Music.",
+    clearSettings: "Clear",
+    saveSettings: "Save Settings",
+    licenseEyebrow: "Activation",
+    licenseTitle: "Activate Nomadic Graphics",
+    licenseIntro: "Enter the purchase email and license code to unlock the desktop app.",
+    licenseEmail: "Email",
+    licenseCode: "License Code",
+    licenseClear: "Clear License",
+    licenseActivate: "Activate"
+  },
+  zh: {
+    guideEyebrow: "首次启动指南",
+    guideTitle: "欢迎使用 Nomadic Graphics",
+    guideAiTitle: "选择 AI 服务",
+    guideAiBody: "GPT Image 和 Vision 节点需要 API Key。你可以使用 OpenAI 官方接口，也可以在设置里填写兼容 OpenAI API 的第三方 Base URL。",
+    guideAudioTitle: "可选音频模型",
+    guideAudioBody: "Magenta RT 模型体积较大，不会随安装包一起提供。需要使用 Magenta Music 时，请自行下载模型，并在设置里指定本地 CLI 和模型路径。",
+    guideSamTitle: "内置 Mobile SAM",
+    guideSamBody: "Mobile SAM 和 ONNX Runtime 已经内置，可以直接在本机做图像分割，不需要额外下载小模型。",
+    guidePrivacyTitle: "缓存与隐私",
+    guidePrivacyBody: "生成图片、音频和恢复缓存都会保存在这台设备上。API Key 属于本机设置，不会写入 patch 文件。",
+    openSettings: "打开设置",
+    startPatching: "开始创作",
+    settingsEyebrow: "本机设置",
+    settingsTitle: "设置",
+    apiBaseUrl: "OpenAI-compatible Base URL",
+    apiKey: "API Key",
+    roboflowKey: "Roboflow API Key",
+    magentaCli: "Magenta RT CLI 路径",
+    magentaHome: "Magenta 模型/Home 文件夹",
+    magentaOutput: "Magenta 输出文件夹",
+    settingsNote: "Base URL 留空时默认使用 OpenAI 官方地址。Magenta 是可选功能，只在 Magenta Music 节点中需要。",
+    clearSettings: "清空",
+    saveSettings: "保存设置",
+    licenseEyebrow: "授权激活",
+    licenseTitle: "激活 Nomadic Graphics",
+    licenseIntro: "请输入购买邮箱和授权码，激活后即可使用桌面版。",
+    licenseEmail: "邮箱",
+    licenseCode: "授权码",
+    licenseClear: "清除授权",
+    licenseActivate: "激活"
+  }
+};
 
 let graph;
 let graphCanvas;
@@ -1352,7 +1620,20 @@ function registerNomadicNodes() {
     };
 
     NomadicNode.prototype.onAdded = function () {
+      syncNodeInputs(this, def);
+      if (def.type === "nomadic/audio/lfo_value") startAudioPreviewLoop();
       if (def.preview) this.size = [720, 560];
+    };
+
+    NomadicNode.prototype.onConfigure = function () {
+      syncNodeInputs(this, def);
+      syncNodeWidgets(this, def);
+      if (def.type === "nomadic/audio/lfo_value") window.setTimeout(startAudioPreviewLoop, 0);
+    };
+
+    NomadicNode.prototype.onRemoved = function () {
+      if (def.type === "nomadic/source/video_input") stopVideoInputNode(this, false);
+      if (def.type === "nomadic/audio/player") stopAudioNode(this);
     };
 
     NomadicNode.prototype.onConnectionsChange = function () {
@@ -1383,8 +1664,9 @@ function addWidgets(node, def) {
   }
   (def.widgets || []).forEach(([kind, name, value, minOrValues, max]) => {
     const key = keyForWidget(name);
+    const widgetValue = node.properties[key] ?? value;
     if (kind === "combo") {
-      node.addWidget("combo", name, value, (nextValue) => {
+      node.addWidget("combo", name, widgetValue, (nextValue) => {
         node.properties[key] = nextValue;
         handleNodeWidgetChange(node, def, name);
         runGraphOnce();
@@ -1396,13 +1678,47 @@ function addWidgets(node, def) {
       node.addWidget("button", name, null, () => handleNodeButton(node, def, name));
       return;
     }
-    node.addWidget(kind, name, value, (nextValue) => {
+    node.addWidget(kind, name, widgetValue, (nextValue) => {
       node.properties[key] = nextValue;
       handleNodeWidgetChange(node, def, name);
       runGraphOnce();
       scheduleUndoSnapshot();
     }, kind === "slider" ? { min: minOrValues, max } : undefined);
   });
+}
+
+function syncNodeWidgets(node, def) {
+  const expected = [];
+  if (!def.preview) expected.push("Bypass");
+  expected.push(...(def.widgets || []).filter(([kind]) => kind !== "button").map(([, name]) => name));
+  const actual = (node.widgets || []).filter((widget) => widget.type !== "button").map((widget) => widget.name);
+  if (expected.length === actual.length && expected.every((name, index) => name === actual[index])) return;
+  node.widgets = [];
+  addWidgets(node, def);
+}
+
+function syncNodeInputs(node, def) {
+  inputDefsFor(def).forEach((input, index) => {
+    const current = node.inputs?.[index];
+    const name = input.name || inputLabel(input.type);
+    if (!current) {
+      node.addInput(name, input.type);
+      return;
+    }
+    current.name = name;
+    current.type = input.type;
+  });
+  if (def.output) {
+    const name = outputLabel(def.output);
+    const type = outputType(def.output);
+    const current = node.outputs?.[0];
+    if (!current) {
+      node.addOutput(name, type);
+    } else {
+      current.name = name;
+      current.type = type;
+    }
+  }
 }
 
 function keyForWidget(name) {
@@ -1655,11 +1971,23 @@ function runNode(def, inputs, props) {
   if (def.type === "nomadic/source/polygon_shape") {
     return NomadicGeometry.createPolygonShape({ sides: props.sides, radius: props.radius, body: props.body });
   }
+  if (def.type === "nomadic/source/line_shape") {
+    return NomadicGeometry.createLineShape({
+      mode: props.mode,
+      length: props.length,
+      amplitude: props.amplitude,
+      frequency: props.frequency,
+      angle: props.angle,
+      thickness: props.thickness
+    });
+  }
   if (def.type === "nomadic/source/random_points") {
     return NomadicGeometry.createRandomPoints({
       distribution: props.distribution,
       count: props.count,
-      spread: props.spread
+      spread: props.spread,
+      countValue: inputs[0],
+      spreadValue: inputs[1]
     }, state.seed);
   }
   if (def.type === "nomadic/source/noise_field") {
@@ -1687,6 +2015,21 @@ function runNode(def, inputs, props) {
       blend: props.blend,
       scale: props.scale,
       opacity: props.opacity
+    });
+  }
+  if (def.type === "nomadic/source/video_input") {
+    return NomadicGeometry.createImageLayer({
+      dataUrl: props.image_data_url,
+      pixels: props.image_raster_pixels || props.image_pixels,
+      cols: props.image_raster_cols || props.image_cols,
+      rows: props.image_raster_rows || props.image_rows,
+      originalWidth: props.image_original_width,
+      originalHeight: props.image_original_height,
+      label: props.image_label || "Video Frame",
+      blend: props.blend,
+      scale: props.scale,
+      opacity: props.opacity,
+      liveFrame: props.video_live_frame === "On"
     });
   }
   if (def.type === "nomadic/source/gpt_image") {
@@ -1778,6 +2121,21 @@ function runNode(def, inputs, props) {
   }
   if (def.type === "nomadic/audio/value") {
     return audioControlValue(inputs[0], props);
+  }
+  if (def.type === "nomadic/audio/lfo_value") {
+    return lfoValue(props);
+  }
+  if (def.type === "nomadic/audio/warp") {
+    return warpedAudio(inputs[0], props, inputs[1]);
+  }
+  if (def.type === "nomadic/audio/gain") {
+    return audioFromProperties(props) || (inputs[0] && inputs[0].ngType === "Audio" ? inputs[0] : null);
+  }
+  if (def.type === "nomadic/audio/reverse" || def.type === "nomadic/audio/beat_slice" || def.type === "nomadic/audio/granular") {
+    return audioFromProperties(props) || (inputs[0] && inputs[0].ngType === "Audio" ? inputs[0] : null);
+  }
+  if (def.type === "nomadic/audio/points") {
+    return audioPoints(inputs[0], props);
   }
   if (def.type === "nomadic/audio/player") {
     return inputs[0] && inputs[0].ngType === "Audio" ? inputs[0] : null;
@@ -1882,6 +2240,7 @@ function runNode(def, inputs, props) {
     return NomadicGeometry.imageWeathering(input, {
       mode: props.mode,
       tone: props.tone,
+      quality: props.quality,
       inkColor: props.ink_color,
       paperColor: props.paper_color,
       toneAmount: props.tone_amount,
@@ -1998,24 +2357,37 @@ function runNode(def, inputs, props) {
   if (def.type === "nomadic/process/smooth") {
     return NomadicGeometry.smoothTrace(input, {
       amount: props.amount,
-      passes: props.passes
+      passes: props.passes,
+      amountValue: inputs[1],
+      passesValue: inputs[2]
     });
   }
   if (def.type === "nomadic/process/curve_tension") {
-    return NomadicGeometry.curveTension(input, { tension: props.tension, sag: props.sag });
+    return NomadicGeometry.curveTension(input, {
+      tension: props.tension,
+      sag: props.sag,
+      tensionValue: inputs[1],
+      sagValue: inputs[2]
+    });
   }
   if (def.type === "nomadic/process/wind") {
     return NomadicGeometry.wind(input, { force: props.force, angle: props.angle }, state.seed);
   }
   if (def.type === "nomadic/process/erode") {
-    return NomadicGeometry.erode(input, { amount: props.amount }, state.seed);
+    return NomadicGeometry.erode(input, {
+      amount: props.amount,
+      amountValue: inputs[1]
+    }, state.seed);
   }
   if (def.type === "nomadic/process/dither") {
     return NomadicGeometry.dither(input, {
       mode: props.mode,
       threshold: props.threshold,
       scale: props.scale,
-      mix: props.mix
+      mix: props.mix,
+      thresholdValue: inputs[1],
+      scaleValue: inputs[2],
+      mixValue: inputs[3]
     }, state.seed);
   }
   if (def.type === "nomadic/process/repeat") {
@@ -2146,6 +2518,17 @@ function runNode(def, inputs, props) {
       seed: props.seed
     }, state.seed);
   }
+  if (def.type === "nomadic/style/colorize") {
+    return NomadicGeometry.colorize(input, {
+      mode: props.mode,
+      ink: props.ink,
+      paper: props.paper,
+      palette: props.palette,
+      amount: props.amount,
+      contrast: props.contrast,
+      seed: props.seed
+    }, state.seed);
+  }
   if (def.type === "nomadic/style/random_stroke_color") {
     return NomadicGeometry.randomStrokeColor(input, {
       target: props.target,
@@ -2267,6 +2650,24 @@ function handleNodeButton(node, def, name) {
   if (def.type === "nomadic/audio/player" && name === "Stop") {
     stopAudioNode(node);
   }
+  if (def.type === "nomadic/audio/player" && name === "Rewind") {
+    seekAudioNode(node, -Number(node.properties.skip || 2));
+  }
+  if (def.type === "nomadic/audio/player" && name === "Forward") {
+    seekAudioNode(node, Number(node.properties.skip || 2));
+  }
+  if (def.type === "nomadic/audio/gain" && name === "Apply") {
+    applyAudioGainNode(node);
+  }
+  if (def.type === "nomadic/audio/reverse" && name === "Apply") {
+    applyAudioTransformNode(node, "reverse");
+  }
+  if (def.type === "nomadic/audio/beat_slice" && name === "Apply") {
+    applyAudioTransformNode(node, "beat_slice");
+  }
+  if (def.type === "nomadic/audio/granular" && name === "Apply") {
+    applyAudioTransformNode(node, "granular");
+  }
   if (def.type === "nomadic/source/svg_input" && name === "Load SVG") {
     readLocalFile(".svg,image/svg+xml", "text").then((text) => {
       if (!text) return;
@@ -2287,6 +2688,25 @@ function handleNodeButton(node, def, name) {
         scheduleUndoSnapshot();
       });
     });
+  }
+  if (def.type === "nomadic/source/video_input" && name === "Load Video") {
+    readLocalFile("video/*", "dataURL").then((dataUrl) => {
+      if (!dataUrl) return;
+      stopVideoInputNode(node);
+      node.properties.video_data_url = dataUrl;
+      node.properties.time = 0;
+      setWidgetValue(node, "Time", 0);
+      captureVideoFrameNode(node);
+    });
+  }
+  if (def.type === "nomadic/source/video_input" && name === "Play") {
+    playVideoInputNode(node);
+  }
+  if (def.type === "nomadic/source/video_input" && name === "Stop") {
+    stopVideoInputNode(node);
+  }
+  if (def.type === "nomadic/source/video_input" && name === "Capture Frame") {
+    captureVideoFrameNode(node);
   }
   if (def.type === "nomadic/source/gpt_image" && name === "Generate") {
     generateGptImage(node);
@@ -2346,6 +2766,27 @@ function handleNodeWidgetChange(node, def, name) {
   }
   if (def.type === "nomadic/audio/player" && ["Loop", "Volume"].includes(name)) {
     updateAudioPlayerNode(node);
+    return;
+  }
+  if (def.type === "nomadic/audio/lfo_value") {
+    startAudioPreviewLoop();
+    return;
+  }
+  if (def.type === "nomadic/audio/gain" && ["Mode", "Gain dB", "Target Peak", "Limiter"].includes(name)) {
+    node.properties.ai_status = "needs Apply";
+    return;
+  }
+  if ((def.type === "nomadic/audio/reverse" || def.type === "nomadic/audio/beat_slice" || def.type === "nomadic/audio/granular") && name !== "Bypass") {
+    node.properties.ai_status = "needs Apply";
+    return;
+  }
+  if (def.type === "nomadic/source/video_input" && name === "Time") {
+    if (!state.videoPlayers.has(node.id)) captureVideoFrameNode(node);
+    return;
+  }
+  if (def.type === "nomadic/source/video_input" && name === "Loop") {
+    const player = state.videoPlayers.get(node.id);
+    if (player?.video) player.video.loop = node.properties.loop === "On";
     return;
   }
   if ((def.type !== "nomadic/source/image_input" && def.type !== "nomadic/source/image_field_input" && def.type !== "nomadic/source/gpt_image") || name !== "Scale") return;
@@ -2427,6 +2868,229 @@ function loadImageField(dataUrl) {
     };
     image.onerror = () => resolve({});
     image.src = dataUrl;
+  });
+}
+
+async function captureVideoFrameNode(node) {
+  const active = state.videoPlayers.get(node.id);
+  if (active?.video) {
+    applyVideoElementFrame(node, active.video, true);
+    return;
+  }
+  const dataUrl = node.properties.video_data_url;
+  if (!dataUrl) {
+    node.properties.ai_status = "needs video";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+  node.properties.ai_status = "capturing frame...";
+  graphCanvas?.setDirty(true, true);
+  try {
+    const frame = await captureVideoFrame(dataUrl, Number(node.properties.time || 0) / 100);
+    node.properties.image_data_url = frame.dataUrl;
+    node.properties.video_live_frame = "Off";
+    node.properties.video_duration = frame.duration;
+    node.properties.video_frame_time = frame.time;
+    const imageData = await loadImageField(frame.dataUrl);
+    Object.assign(node.properties, imageData);
+    node.properties.image_label = `Video Frame ${roundDisplay(frame.time)}s ${frame.width}x${frame.height}`;
+    node.properties.ai_status = `frame ${roundDisplay(frame.time)}s`;
+    runGraphOnce();
+    scheduleUndoSnapshot();
+  } catch (error) {
+    console.error(error);
+    node.properties.ai_status = `error: ${String(error.message || error).slice(0, 48)}`;
+    graphCanvas?.setDirty(true, true);
+  }
+}
+
+async function playVideoInputNode(node) {
+  const dataUrl = node.properties.video_data_url;
+  if (!dataUrl) {
+    node.properties.ai_status = "needs video";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+  stopVideoInputNode(node, false);
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.loop = node.properties.loop === "On";
+  video.preload = "auto";
+  const player = {
+    video,
+    frame: null,
+    lastFrameAt: 0
+  };
+  state.videoPlayers.set(node.id, player);
+  video.onerror = () => {
+    node.properties.ai_status = "video error";
+    state.videoPlayers.delete(node.id);
+    graphCanvas?.setDirty(true, true);
+  };
+  video.onloadedmetadata = () => {
+    const duration = Number.isFinite(video.duration) ? video.duration : 0;
+    const target = duration > 0 ? clampNumber(Number(node.properties.time || 0) / 100, 0, 1) * duration : 0;
+    video.currentTime = Math.min(Math.max(0, target), Math.max(0, duration - 0.001));
+  };
+  video.onended = () => {
+    stopVideoInputNode(node, false);
+    node.properties.ai_status = "ended";
+    graphCanvas?.setDirty(true, true);
+  };
+  video.onplay = () => startVideoFrameLoop(node);
+  video.src = dataUrl;
+  node.properties.ai_status = "playing video...";
+  graphCanvas?.setDirty(true, true);
+  try {
+    await video.play();
+    startVideoFrameLoop(node);
+  } catch (error) {
+    console.error(error);
+    node.properties.ai_status = `error: ${String(error.message || error).slice(0, 48)}`;
+    stopVideoInputNode(node, false);
+    graphCanvas?.setDirty(true, true);
+  }
+}
+
+function stopVideoInputNode(node, resetStatus = true) {
+  const player = state.videoPlayers.get(node.id);
+  if (player?.frame) window.cancelAnimationFrame(player.frame);
+  if (player?.video) {
+    player.video.pause();
+    player.video.removeAttribute("src");
+    player.video.load();
+  }
+  state.videoPlayers.delete(node.id);
+  if (resetStatus) node.properties.ai_status = "stopped";
+  graphCanvas?.setDirty(true, true);
+}
+
+function startVideoFrameLoop(node) {
+  const player = state.videoPlayers.get(node.id);
+  if (!player?.video || player.frame) return;
+  const tick = (time) => {
+    const current = state.videoPlayers.get(node.id);
+    if (!current?.video || current.video.paused || current.video.ended) {
+      if (current) current.frame = null;
+      return;
+    }
+    const fps = clampNumber(Number(node.properties.fps || 8), 1, 30);
+    if (time - current.lastFrameAt >= 1000 / fps) {
+      current.lastFrameAt = time;
+      applyVideoElementFrame(node, current.video, false);
+    }
+    current.frame = window.requestAnimationFrame(tick);
+  };
+  player.frame = window.requestAnimationFrame(tick);
+}
+
+function applyVideoElementFrame(node, video, snapshotDataUrl = false) {
+  if (!video.videoWidth || !video.videoHeight) return;
+  const frame = sampleVideoFrame(video, snapshotDataUrl);
+  Object.assign(node.properties, frame);
+  node.properties.video_live_frame = "On";
+  const duration = Number.isFinite(video.duration) ? video.duration : 0;
+  const current = Number(video.currentTime || 0);
+  node.properties.video_duration = duration;
+  node.properties.video_frame_time = current;
+  node.properties.image_label = `Video Frame ${roundDisplay(current)}s ${video.videoWidth}x${video.videoHeight}`;
+  if (duration > 0) {
+    node.properties.time = clampNumber((current / duration) * 100, 0, 100);
+    setWidgetValue(node, "Time", node.properties.time);
+  }
+  node.properties.ai_status = `frame ${roundDisplay(current)}s`;
+  runGraphOnce();
+  graphCanvas?.setDirty(true, true);
+}
+
+function sampleVideoFrame(video, includeDataUrl = false) {
+  const width = video.videoWidth || 1;
+  const height = video.videoHeight || 1;
+  const source = document.createElement("canvas");
+  source.width = width;
+  source.height = height;
+  const sourceCtx = source.getContext("2d", { willReadFrequently: true });
+  sourceCtx.drawImage(video, 0, 0, width, height);
+  return imageDataFromCanvas(source, width, height, includeDataUrl);
+}
+
+function imageDataFromCanvas(source, originalWidth, originalHeight, includeDataUrl = false) {
+  const maxSide = 112;
+  const minSide = 24;
+  const aspect = originalWidth / Math.max(1, originalHeight);
+  const cols = aspect >= 1 ? maxSide : Math.max(minSide, Math.round(maxSide * aspect));
+  const rows = aspect >= 1 ? Math.max(minSide, Math.round(maxSide / aspect)) : maxSide;
+  const canvas = document.createElement("canvas");
+  canvas.width = cols;
+  canvas.height = rows;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0, cols, rows);
+
+  const rasterMaxSide = 420;
+  const rasterCols = aspect >= 1 ? rasterMaxSide : Math.max(minSide, Math.round(rasterMaxSide * aspect));
+  const rasterRows = aspect >= 1 ? Math.max(minSide, Math.round(rasterMaxSide / aspect)) : rasterMaxSide;
+  const rasterCanvas = document.createElement("canvas");
+  rasterCanvas.width = rasterCols;
+  rasterCanvas.height = rasterRows;
+  const rasterCtx = rasterCanvas.getContext("2d", { willReadFrequently: true });
+  rasterCtx.drawImage(source, 0, 0, rasterCols, rasterRows);
+
+  return {
+    ...(includeDataUrl ? { image_data_url: source.toDataURL("image/png") } : {}),
+    video_live_frame: includeDataUrl ? "Off" : "On",
+    image_pixels: Array.from(ctx.getImageData(0, 0, cols, rows).data),
+    image_cols: cols,
+    image_rows: rows,
+    image_rect_x: 0,
+    image_rect_y: 0,
+    image_rect_width: cols,
+    image_rect_height: rows,
+    image_original_width: originalWidth,
+    image_original_height: originalHeight,
+    image_raster_pixels: Array.from(rasterCtx.getImageData(0, 0, rasterCols, rasterRows).data),
+    image_raster_cols: rasterCols,
+    image_raster_rows: rasterRows,
+    image_sampling_version: 4
+  };
+}
+
+function captureVideoFrame(dataUrl, progress = 0) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    let resolved = false;
+    const cleanup = () => {
+      video.removeAttribute("src");
+      video.load();
+    };
+    const resolveFrame = () => {
+      if (resolved) return;
+      resolved = true;
+      const width = video.videoWidth || 1;
+      const height = video.videoHeight || 1;
+      const frame = sampleVideoFrame(video, true);
+      const duration = Number.isFinite(video.duration) ? video.duration : 0;
+      const time = Number(video.currentTime || 0);
+      cleanup();
+      resolve({ dataUrl: frame.image_data_url, duration, time, width, height });
+    };
+    video.onerror = () => {
+      cleanup();
+      reject(new Error("Could not load video"));
+    };
+    video.onloadedmetadata = () => {
+      const duration = Number.isFinite(video.duration) ? video.duration : 0;
+      const target = duration > 0 ? clampNumber(progress, 0, 1) * duration : 0;
+      video.currentTime = Math.min(Math.max(0, target), Math.max(0, duration - 0.001));
+    };
+    video.onloadeddata = () => {
+      if (Number(video.currentTime || 0) <= 0.001 && Number(progress || 0) <= 0.001) resolveFrame();
+    };
+    video.onseeked = resolveFrame;
+    video.src = dataUrl;
   });
 }
 
@@ -2598,7 +3262,286 @@ function audioFromProperties(props) {
   };
 }
 
+function warpedAudio(audio, props = {}, rateValue = null) {
+  if (!audio || audio.ngType !== "Audio") return null;
+  const duration = Number(audio.duration || 0);
+  const startPct = clampNumber(Number(props.start || 0) / 100, 0, 1);
+  const endPct = clampNumber(Number(props.end || 100) / 100, 0, 1);
+  const start = Math.min(startPct, endPct) * duration;
+  const end = Math.max(startPct, endPct) * duration;
+  const valueRate = rateValue?.ngType === "Value" ? Number(rateValue.value || 0) : Number(props.rate || 100);
+  const rate = clampNumber(valueRate / 100, 0.25, 4);
+  return {
+    ...audio,
+    label: `${audio.label || "Audio"} / Warp`,
+    playbackRate: rate,
+    playbackStart: start,
+    playbackEnd: end || duration,
+    history: (audio.history || ["Audio"]).concat([`Audio Warp(${Math.round(rate * 100)}%)`]),
+    stats: {
+      ...(audio.stats || {}),
+      rate: `${Math.round(rate * 100)}%`,
+      segment: `${roundDisplay(start)}-${roundDisplay(end || duration)}s`
+    }
+  };
+}
+
+async function applyAudioGainNode(node) {
+  runGraphOnce();
+  const audio = node.getInputData(0);
+  if (!audio || audio.ngType !== "Audio" || !audio.dataUrl) {
+    node.properties.ai_status = "needs audio";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+  node.properties.ai_status = "processing audio...";
+  graphCanvas?.setDirty(true, true);
+  try {
+    const result = await renderAudioGain(audio, node.properties);
+    await applyAudioDataUrl(node, result.dataUrl, `Audio Gain ${result.peakDb}dB`);
+    node.properties.audio_gain_db = result.gainDb;
+    node.properties.audio_peak_db = result.peakDb;
+    node.properties.ai_status = `gain ${result.gainDb}dB`;
+    runGraphOnce();
+    scheduleUndoSnapshot();
+  } catch (error) {
+    console.error(error);
+    node.properties.ai_status = `error: ${String(error.message || error).slice(0, 48)}`;
+    graphCanvas?.setDirty(true, true);
+  }
+}
+
+async function renderAudioGain(audio, props = {}) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) throw new Error("Web Audio is not available");
+  const context = new AudioContextClass();
+  try {
+    const buffer = await (await fetch(audio.dataUrl)).arrayBuffer();
+    const decoded = await context.decodeAudioData(buffer.slice(0));
+    const channels = Array.from({ length: decoded.numberOfChannels }, (_, index) => decoded.getChannelData(index));
+    let peak = 0;
+    channels.forEach((channel) => {
+      for (let index = 0; index < channel.length; index += 1) {
+        peak = Math.max(peak, Math.abs(channel[index] || 0));
+      }
+    });
+    const targetPeak = clampNumber(Number(props.target_peak || 90) / 100, 0.01, 1);
+    const gain = props.mode === "Gain dB"
+      ? Math.pow(10, Number(props.gain_db || 0) / 20)
+      : targetPeak / Math.max(peak, 0.000001);
+    const limiter = props.limiter !== "Off";
+    const processed = channels.map((channel) => {
+      const output = new Float32Array(channel.length);
+      for (let index = 0; index < channel.length; index += 1) {
+        const value = (channel[index] || 0) * gain;
+        output[index] = limiter ? clampNumber(value, -1, 1) : value;
+      }
+      return output;
+    });
+    const wav = encodeWavPcm16(processed, decoded.sampleRate);
+    const gainDb = roundDisplay(20 * Math.log10(Math.max(gain, 0.000001)));
+    const peakDb = roundDisplay(20 * Math.log10(Math.max(Math.min(peak * gain, 1), 0.000001)));
+    return {
+      dataUrl: `data:audio/wav;base64,${uint8ToBase64(wav)}`,
+      gainDb,
+      peakDb
+    };
+  } finally {
+    context.close?.();
+  }
+}
+
+async function applyAudioTransformNode(node, kind) {
+  runGraphOnce();
+  const audio = node.getInputData(0);
+  if (!audio || audio.ngType !== "Audio" || !audio.dataUrl) {
+    node.properties.ai_status = "needs audio";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+  node.properties.ai_status = "processing audio...";
+  graphCanvas?.setDirty(true, true);
+  try {
+    const result = await renderAudioTransform(audio, node.properties, kind);
+    await applyAudioDataUrl(node, result.dataUrl, result.label);
+    node.properties.ai_status = result.status;
+    runGraphOnce();
+    scheduleUndoSnapshot();
+  } catch (error) {
+    console.error(error);
+    node.properties.ai_status = `error: ${String(error.message || error).slice(0, 48)}`;
+    graphCanvas?.setDirty(true, true);
+  }
+}
+
+async function renderAudioTransform(audio, props = {}, kind = "reverse") {
+  const decoded = await decodeAudioClip(audio.dataUrl);
+  const channels = decoded.channels;
+  let processed;
+  if (kind === "beat_slice") processed = beatSliceChannels(channels, decoded.sampleRate, props);
+  else if (kind === "granular") processed = granularChannels(channels, decoded.sampleRate, props);
+  else processed = channels.map((channel) => Float32Array.from(channel).reverse());
+  return {
+    dataUrl: `data:audio/wav;base64,${uint8ToBase64(encodeWavPcm16(processed, decoded.sampleRate))}`,
+    label: kind === "beat_slice" ? "Beat Slice" : kind === "granular" ? "Granular" : "Audio Reverse",
+    status: kind === "beat_slice" ? "sliced" : kind === "granular" ? "granular" : "reversed"
+  };
+}
+
+async function decodeAudioClip(dataUrl) {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) throw new Error("Web Audio is not available");
+  const context = new AudioContextClass();
+  try {
+    const buffer = await (await fetch(dataUrl)).arrayBuffer();
+    const decoded = await context.decodeAudioData(buffer.slice(0));
+    return {
+      sampleRate: decoded.sampleRate,
+      channels: Array.from({ length: decoded.numberOfChannels }, (_, index) => decoded.getChannelData(index))
+    };
+  } finally {
+    context.close?.();
+  }
+}
+
+function beatSliceChannels(channels, sampleRate, props = {}) {
+  const sourceLength = channels[0]?.length || 0;
+  const sliceSamples = Math.max(1, Math.round(sampleRate * Number(props.slice_ms || 180) / 1000));
+  const repeat = Math.max(1, Math.round(Number(props.repeat || 2)));
+  const threshold = clampNumber(Number(props.threshold || 36) / 100, 0, 1);
+  const mode = props.mode || "Stutter";
+  const seed = Number(props.seed || 0) * 1009;
+  const slices = [];
+  for (let start = 0; start < sourceLength; start += sliceSamples) {
+    const end = Math.min(sourceLength, start + sliceSamples);
+    const energy = sliceEnergy(channels[0], start, end);
+    if (energy >= threshold || mode === "Shuffle") slices.push({ start, end, energy });
+  }
+  const selected = slices.length ? slices : [{ start: 0, end: Math.min(sourceLength, sliceSamples), energy: 1 }];
+  const units = [];
+  selected.forEach((slice, index) => {
+    const times = mode === "Stutter" && slice.energy >= threshold ? repeat : 1;
+    for (let copy = 0; copy < times; copy += 1) units.push({ ...slice, order: index + copy / Math.max(1, times) });
+  });
+  if (mode === "Shuffle") {
+    units.sort((a, b) => seededUnit(seed + a.order * 131) - seededUnit(seed + b.order * 131));
+  }
+  const outputLength = Math.max(1, units.reduce((sum, unit) => sum + Math.max(1, unit.end - unit.start), 0));
+  const output = channels.map(() => new Float32Array(outputLength));
+  let cursor = 0;
+  units.forEach((unit) => {
+    const length = Math.max(1, unit.end - unit.start);
+    channels.forEach((channel, channelIndex) => {
+      for (let index = 0; index < length && cursor + index < outputLength; index += 1) {
+        const gated = mode === "Gate" && unit.energy < threshold ? 0 : 1;
+        output[channelIndex][cursor + index] = (channel[unit.start + index] || 0) * gated;
+      }
+    });
+    cursor += length;
+  });
+  return output;
+}
+
+function sliceEnergy(channel, start, end) {
+  let sum = 0;
+  for (let index = start; index < end; index += 1) {
+    const value = Math.abs(channel[index] || 0);
+    sum += value * value;
+  }
+  return clampNumber(Math.sqrt(sum / Math.max(1, end - start)) * 8, 0, 1);
+}
+
+function granularChannels(channels, sampleRate, props = {}) {
+  const sourceLength = channels[0]?.length || 0;
+  const grainSamples = Math.max(1, Math.round(sampleRate * Number(props.grain_ms || 90) / 1000));
+  const stepSamples = Math.max(1, Math.round(sampleRate * Number(props.step_ms || 60) / 1000));
+  const jitter = clampNumber(Number(props.jitter || 35) / 100, 0, 1);
+  const reverseChance = clampNumber(Number(props.reverse || 18) / 100, 0, 1);
+  const seed = Number(props.seed || 0) * 1009;
+  const grainCount = Math.max(1, Math.ceil(sourceLength / stepSamples));
+  const outputLength = Math.max(1, grainCount * stepSamples + grainSamples);
+  const output = channels.map(() => new Float32Array(outputLength));
+  for (let grain = 0; grain < grainCount; grain += 1) {
+    const base = grain * stepSamples;
+    const wobble = Math.round((seededUnit(seed + grain * 29) - 0.5) * jitter * grainSamples * 6);
+    const sourceStart = clampNumber(base + wobble, 0, Math.max(0, sourceLength - grainSamples));
+    const reversed = seededUnit(seed + grain * 47 + 5) < reverseChance;
+    channels.forEach((channel, channelIndex) => {
+      for (let index = 0; index < grainSamples; index += 1) {
+        const sourceIndex = Math.round(reversed ? sourceStart + grainSamples - 1 - index : sourceStart + index);
+        const env = Math.sin((index / Math.max(1, grainSamples - 1)) * Math.PI);
+        output[channelIndex][base + index] += (channel[sourceIndex] || 0) * env;
+      }
+    });
+  }
+  normalizeChannels(output, 0.9);
+  return output;
+}
+
+function normalizeChannels(channels, targetPeak = 0.9) {
+  let peak = 0;
+  channels.forEach((channel) => {
+    for (let index = 0; index < channel.length; index += 1) peak = Math.max(peak, Math.abs(channel[index] || 0));
+  });
+  if (peak <= targetPeak || peak <= 0) return;
+  const gain = targetPeak / peak;
+  channels.forEach((channel) => {
+    for (let index = 0; index < channel.length; index += 1) channel[index] *= gain;
+  });
+}
+
+function encodeWavPcm16(channels, sampleRate) {
+  const channelCount = Math.max(1, channels.length);
+  const sampleCount = channels[0]?.length || 0;
+  const bytesPerSample = 2;
+  const blockAlign = channelCount * bytesPerSample;
+  const dataSize = sampleCount * blockAlign;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  writeAscii(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeAscii(view, 8, "WAVE");
+  writeAscii(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channelCount, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeAscii(view, 36, "data");
+  view.setUint32(40, dataSize, true);
+  let offset = 44;
+  for (let sample = 0; sample < sampleCount; sample += 1) {
+    for (let channel = 0; channel < channelCount; channel += 1) {
+      const value = clampNumber(channels[channel]?.[sample] || 0, -1, 1);
+      view.setInt16(offset, value < 0 ? value * 0x8000 : value * 0x7fff, true);
+      offset += 2;
+    }
+  }
+  return new Uint8Array(buffer);
+}
+
+function writeAscii(view, offset, text) {
+  for (let index = 0; index < text.length; index += 1) {
+    view.setUint8(offset + index, text.charCodeAt(index));
+  }
+}
+
+function uint8ToBase64(bytes) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
 async function applyAudioDataUrl(node, dataUrl, label) {
+  const previousDataUrl = node.properties.audio_data_url;
+  if (previousDataUrl && state.audioPlayer?.audio?.dataUrl === previousDataUrl) {
+    stopAudioNode();
+  }
   node.properties.ai_status = "analyzing audio...";
   graphCanvas?.setDirty(true, true);
   const features = await analyzeAudioDataUrl(dataUrl);
@@ -2616,19 +3559,27 @@ async function applyAudioDataUrl(node, dataUrl, label) {
 
 function updateAudioPlayerNode(node) {
   if (!node || state.audioPlayer?.nodeId !== node.id || !state.audioPlayer.element) return;
-  state.audioPlayer.element.loop = node.properties.loop === "On";
+  state.audioPlayer.loop = node.properties.loop === "On";
+  const audio = state.audioPlayer.audio || {};
+  const segmented = Number(audio.playbackEnd || audio.duration || 0) > Number(audio.playbackStart || 0)
+    && Number(audio.playbackEnd || audio.duration || 0) < Number(audio.duration || 0);
+  state.audioPlayer.element.loop = state.audioPlayer.loop && !segmented;
   state.audioPlayer.element.volume = clampNumber(Number(node.properties.volume || 80) / 100, 0, 1);
+  state.audioPlayer.element.playbackRate = clampNumber(Number(state.audioPlayer.audio?.playbackRate || 1), 0.25, 4);
 }
 
 function startAudioPreviewLoop() {
   if (state.audioPreviewFrame) return;
   const tick = (time) => {
-    if (!state.audioPlayer?.element || state.audioPlayer.element.paused || state.audioPlayer.element.ended) {
+    const lfoIsActive = graph?._nodes?.some((node) => node.type === "nomadic/audio/lfo_value" && node.properties?.sync === "Clock");
+    const audioIsActive = state.audioPlayer?.element && !state.audioPlayer.element.paused && !state.audioPlayer.element.ended;
+    if (!audioIsActive && !lfoIsActive) {
       state.audioPreviewFrame = null;
       return;
     }
     if (time - state.lastAudioPreviewAt > 1000 / 24) {
       state.lastAudioPreviewAt = time;
+      enforceAudioSegment();
       runGraphOnce();
     }
     state.audioPreviewFrame = window.requestAnimationFrame(tick);
@@ -2640,6 +3591,27 @@ function stopAudioPreviewLoop() {
   if (!state.audioPreviewFrame) return;
   window.cancelAnimationFrame(state.audioPreviewFrame);
   state.audioPreviewFrame = null;
+}
+
+function enforceAudioSegment() {
+  const player = state.audioPlayer;
+  const element = player?.element;
+  const audio = player?.audio;
+  if (!element || !audio) return;
+  const duration = Number(audio.duration || element.duration || 0);
+  const start = clampNumber(Number(audio.playbackStart || 0), 0, duration || Number.MAX_SAFE_INTEGER);
+  const end = clampNumber(Number(audio.playbackEnd || duration || element.duration || 0), start || 0, duration || element.duration || start);
+  if (end > start && element.currentTime >= end) {
+    if (player.loop) {
+      element.currentTime = start;
+      element.play().catch(() => {});
+    } else {
+      element.pause();
+      stopAudioPreviewLoop();
+      const activeNode = graph?._nodes?.find((item) => item.id === player.nodeId);
+      if (activeNode?.properties) activeNode.properties.ai_status = "ended";
+    }
+  }
 }
 
 function stopAudioNode(node = null) {
@@ -2668,9 +3640,14 @@ async function playAudioNode(node) {
   }
   stopAudioNode();
   const element = new Audio(audio.dataUrl);
-  element.loop = node.properties.loop === "On";
+  const start = Number(audio.playbackStart || 0);
+  const end = Number(audio.playbackEnd || audio.duration || 0);
+  const segmented = end > start && end < Number(audio.duration || 0);
+  element.loop = node.properties.loop === "On" && !segmented;
   element.volume = clampNumber(Number(node.properties.volume || 80) / 100, 0, 1);
-  state.audioPlayer = { nodeId: node.id, element, audio };
+  element.playbackRate = clampNumber(Number(audio.playbackRate || 1), 0.25, 4);
+  if (start > 0) element.currentTime = start;
+  state.audioPlayer = { nodeId: node.id, element, audio, loop: node.properties.loop === "On" };
   node.properties.ai_status = "playing";
   element.addEventListener("ended", () => {
     if (element.loop || state.audioPlayer?.element !== element) return;
@@ -2729,6 +3706,24 @@ async function analyzeAudioDataUrl(dataUrl) {
   }
 }
 
+function seekAudioNode(node, offsetSeconds) {
+  const player = state.audioPlayer;
+  const element = player?.element;
+  if (!element || player.nodeId !== node.id) {
+    node.properties.ai_status = "not playing";
+    graphCanvas?.setDirty(true, true);
+    return;
+  }
+  const audio = player.audio || {};
+  const duration = Number(audio.duration || element.duration || 0);
+  const start = clampNumber(Number(audio.playbackStart || 0), 0, duration || Number.MAX_SAFE_INTEGER);
+  const end = clampNumber(Number(audio.playbackEnd || duration || element.duration || 0), start || 0, duration || element.duration || start);
+  element.currentTime = clampNumber(Number(element.currentTime || 0) + Number(offsetSeconds || 0), start, end || duration || Number.MAX_SAFE_INTEGER);
+  node.properties.ai_status = `${roundDisplay(element.currentTime)}s`;
+  runGraphOnce();
+  graphCanvas?.setDirty(true, true);
+}
+
 function audioOnsets(rms) {
   let previous = 0;
   return (rms || []).map((value) => {
@@ -2784,6 +3779,51 @@ function audioFeatureField(audio, props = {}) {
   };
 }
 
+function audioPoints(audio, props = {}) {
+  if (!audio || audio.ngType !== "Audio") return null;
+  const source = audioFeatureSeries(audio, props.mode === "Amplitude" ? "Amplitude" : props.mode);
+  if (!source.length) return null;
+  const count = Math.max(1, Math.round(Number(props.count || 240)));
+  const radius = Number(props.radius || 260);
+  const spread = Number(props.spread || 120);
+  const threshold = clampNumber(Number(props.threshold || 24) / 100, 0, 1);
+  const series = normalizeSeries01(source);
+  const points = [];
+  for (let index = 0; index < count; index += 1) {
+    const t = count <= 1 ? 0 : index / (count - 1);
+    const sourceIndex = Math.min(series.length - 1, Math.round(t * (series.length - 1)));
+    const value = series[sourceIndex] || 0;
+    if (props.mode === "Onsets" && value < threshold) continue;
+    const angle = t * Math.PI * 2;
+    const pulse = Math.max(0, value - threshold) / Math.max(0.001, 1 - threshold);
+    const r = radius * (0.45 + value * 0.55) + (seededUnit(index * 97 + value * 31) - 0.5) * spread;
+    const nx = Math.cos(angle);
+    const ny = Math.sin(angle);
+    points.push({
+      x: 550 + nx * r,
+      y: 380 + ny * r * (props.mode === "Waveform" ? 0.62 : 1),
+      nx,
+      ny,
+      role: pulse > 0.65 ? "accent" : "audio",
+      value
+    });
+  }
+  return {
+    ngType: "PointSet",
+    label: `${audio.label || "Audio"} / Audio Points`,
+    shapeKind: "audio",
+    sourceShape: null,
+    points,
+    bounds: boundsFromPoints(points),
+    history: (audio.history || ["Audio"]).concat([`Audio Points(${props.mode || "Onsets"})`]),
+    stats: {
+      points: points.length,
+      mode: props.mode || "Onsets",
+      threshold: Math.round(threshold * 100)
+    }
+  };
+}
+
 function audioFeatureSeries(audio, mode) {
   if (mode === "Waveform") return audio.peaks || [];
   if (mode === "Onsets") return audio.onsets || [];
@@ -2825,6 +3865,50 @@ function audioControlValue(audio, props = {}) {
       value: roundDisplay(value)
     }
   };
+}
+
+function lfoValue(props = {}) {
+  const time = lfoTime(props);
+  const rate = Number(props.rate || 0.5);
+  const phase = Number(props.phase || 0) / 360;
+  const cycle = time * rate + phase;
+  const wave = lfoWaveValue(props.wave || "Sine", cycle, Number(props.seed || 0));
+  const min = Number(props.min ?? 0);
+  const max = Number(props.max ?? 100);
+  const value = min + (max - min) * wave;
+  return {
+    ngType: "Value",
+    label: `LFO(${roundDisplay(value)})`,
+    value,
+    history: [`LFO Value(${props.wave || "Sine"})`],
+    stats: {
+      wave: props.wave || "Sine",
+      sync: props.sync || "Audio",
+      rate: roundDisplay(rate),
+      value: roundDisplay(value)
+    }
+  };
+}
+
+function lfoTime(props = {}) {
+  if (props.sync !== "Clock" && state.audioPlayer?.element && !state.audioPlayer.element.paused) {
+    return Number(state.audioPlayer.element.currentTime || 0);
+  }
+  return performance.now() / 1000;
+}
+
+function lfoWaveValue(wave, cycle, seed = 0) {
+  const t = ((cycle % 1) + 1) % 1;
+  if (wave === "Triangle") return t < 0.5 ? t * 2 : 2 - t * 2;
+  if (wave === "Saw") return t;
+  if (wave === "Square") return t < 0.5 ? 1 : 0;
+  if (wave === "Random Step") return seededUnit(Number(seed || 0) * 997 + Math.floor(cycle));
+  return 0.5 - Math.cos(t * Math.PI * 2) * 0.5;
+}
+
+function seededUnit(value) {
+  const x = Math.sin(Number(value || 0) * 12.9898 + 78.233) * 43758.5453;
+  return x - Math.floor(x);
 }
 
 function liveAudioWindow(audio, series, props = {}) {
@@ -2897,8 +3981,16 @@ async function generateMagentaMusic(node) {
       prompt,
       model: String(node.properties.model || "mrt2_small").trim(),
       duration: Number(node.properties.duration || 4),
-      backend: String(node.properties.backend || "mlx").trim()
+      backend: String(node.properties.backend || "mlx").trim(),
+      magenta_cli: state.settings?.magentaCli || "",
+      magenta_home: state.settings?.magentaHome || "",
+      magenta_output_dir: state.settings?.magentaOutputDir || ""
     };
+    if (/Win/i.test(navigator.platform || "") && requestPayload.model === "mrt2_base" && requestPayload.duration > 3) {
+      node.properties.ai_status = "use small or <=3s";
+      graphCanvas?.setDirty(true, true);
+      return;
+    }
     const cacheKey = node.properties.cache === "Off" ? null : await gptImageCacheKey({ mode: "magenta_audio", ...requestPayload });
     const cached = cacheKey ? await readGptImageCache(cacheKey) : null;
     if (cached?.audio_data_url) {
@@ -2936,38 +4028,32 @@ function normalizeOpenAIOption(value) {
 function normalizeImageModel(model, apiUrl) {
   const text = String(model || "").trim();
   const baseUrl = normalizeApiBaseUrl(apiUrl);
-  if (/yq66\.ai/i.test(baseUrl) && (!text || text === "Image2" || text === "image-2")) return "gpt-image-2-pro";
+  if (!/api\.openai\.com/i.test(baseUrl) && (!text || text === "Image2" || text === "image-2")) return "gpt-image-2-pro";
   return text || "gpt-image-2-pro";
 }
 
 function normalizeApiBaseUrl(value) {
-  const text = String(value || "https://yq66.ai").trim();
-  return text || "https://yq66.ai";
+  const text = String(value || state.settings?.openaiBaseUrl || "").trim();
+  return text || DEFAULT_OPENAI_BASE_URL;
 }
 
 function getOpenAIApiKey() {
   if (state.openaiApiKey) return Promise.resolve(state.openaiApiKey);
-  const stored = readStoredValue(API_KEY_STORAGE_KEY);
-  if (stored) {
-    state.openaiApiKey = stored;
-    return Promise.resolve(stored);
+  if (state.settings?.openaiApiKey) {
+    state.openaiApiKey = state.settings.openaiApiKey;
+    return Promise.resolve(state.openaiApiKey);
   }
-  const key = window.prompt("API key for this device. It will be saved in localStorage and is not saved into the patch.");
-  state.openaiApiKey = String(key || "").trim() || null;
-  if (state.openaiApiKey) writeStoredValue(API_KEY_STORAGE_KEY, state.openaiApiKey);
+  showSettings();
   return Promise.resolve(state.openaiApiKey);
 }
 
 function getRoboflowApiKey() {
   if (state.roboflowApiKey) return Promise.resolve(state.roboflowApiKey);
-  const stored = readStoredValue(ROBOFLOW_API_KEY_STORAGE_KEY);
-  if (stored) {
-    state.roboflowApiKey = stored;
-    return Promise.resolve(stored);
+  if (state.settings?.roboflowApiKey) {
+    state.roboflowApiKey = state.settings.roboflowApiKey;
+    return Promise.resolve(state.roboflowApiKey);
   }
-  const key = window.prompt("Roboflow API key for this device. It will be saved in localStorage and is not saved into the patch.");
-  state.roboflowApiKey = String(key || "").trim() || null;
-  if (state.roboflowApiKey) writeStoredValue(ROBOFLOW_API_KEY_STORAGE_KEY, state.roboflowApiKey);
+  showSettings();
   return Promise.resolve(state.roboflowApiKey);
 }
 
@@ -4057,6 +5143,7 @@ function setupGraph() {
   graph.onAfterChange = scheduleUndoSnapshot;
   resizeGraphCanvas();
   graphCanvas = new LGraphCanvas("#graphCanvas", graph);
+  installRoundedGroupRenderer(graphCanvas);
   graphCanvas.render_shadows = false;
   graphCanvas.title_text_font = `600 ${LiteGraph.NODE_TEXT_SIZE}px ${UI_FONT}`;
   graphCanvas.inner_text_font = `normal ${LiteGraph.NODE_SUBTEXT_SIZE}px ${UI_FONT}`;
@@ -4064,6 +5151,9 @@ function setupGraph() {
   graphCanvas.ds.scale = 1;
   graphCanvas.onNodeSelected = selectGraphNode;
   graphCanvas.onNodeDeselected = () => selectGraphNode(null);
+  graphCanvas.onSelectionChange = handleGraphSelectionChange;
+  graphCanvas.onMouse = handleGraphCanvasMouse;
+  graphCanvas.onDrawForeground = drawGraphCanvasOverlay;
   graphCanvas.getMenuOptions = nomadicCanvasMenuOptions;
   bindGraphCanvasInsertEvents();
   bindPreciseNumericInput();
@@ -4076,6 +5166,74 @@ function hideForeignNodeTypes() {
   Object.keys(LiteGraph.registered_node_types).forEach((type) => {
     if (!nodeDefs.has(type)) delete LiteGraph.registered_node_types[type];
   });
+}
+
+function installRoundedGroupRenderer(canvas) {
+  canvas.drawGroups = function (_canvas, ctx) {
+    if (!this.graph) return;
+    ctx.save();
+    const groups = this.graph._groups || [];
+    groups.forEach((group) => {
+      const groupRect = {
+        x: group._bounding[0],
+        y: group._bounding[1],
+        width: group._bounding[2],
+        height: group._bounding[3]
+      };
+      const visibleRect = {
+        x: this.visible_area[0],
+        y: this.visible_area[1],
+        width: this.visible_area[2],
+        height: this.visible_area[3]
+      };
+      if (!rectsOverlap(visibleRect, groupRect)) return;
+      const color = group.color || "#647d68";
+      const radius = Math.min(18, Math.max(8, Math.min(group.size[0], group.size[1]) * 0.08));
+      ctx.fillStyle = color;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.18 * this.editor_alpha;
+      roundedRectPath(ctx, group.pos[0] + 0.5, group.pos[1] + 0.5, group.size[0], group.size[1], radius);
+      ctx.fill();
+      ctx.globalAlpha = 0.72 * this.editor_alpha;
+      ctx.lineWidth = 1.5 / Math.max(0.001, this.ds.scale);
+      ctx.stroke();
+
+      ctx.globalAlpha = 0.55 * this.editor_alpha;
+      ctx.beginPath();
+      ctx.moveTo(group.pos[0] + group.size[0] - 17, group.pos[1] + group.size[1] - 6);
+      ctx.lineTo(group.pos[0] + group.size[0] - 6, group.pos[1] + group.size[1] - 6);
+      ctx.lineTo(group.pos[0] + group.size[0] - 6, group.pos[1] + group.size[1] - 17);
+      ctx.closePath();
+      ctx.fill();
+
+      const fontSize = group.font_size || LiteGraph.DEFAULT_GROUP_FONT_SIZE;
+      ctx.globalAlpha = this.editor_alpha;
+      ctx.fillStyle = color;
+      ctx.font = `${fontSize}px ${UI_FONT}`;
+      ctx.textAlign = "left";
+      ctx.fillText(group.title || "Group", group.pos[0] + 12, group.pos[1] + fontSize + 6);
+    });
+    ctx.restore();
+  };
+}
+
+function roundedRectPath(ctx, x, y, width, height, radius) {
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+  if (ctx.roundRect) {
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, r);
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
 }
 
 function nomadicCanvasMenuOptions() {
@@ -4111,12 +5269,16 @@ function addGraphNode(type, options = {}) {
 }
 
 function bindGraphCanvasInsertEvents() {
+  graphCanvasElement.addEventListener("contextmenu", suppressUnexpectedContextMenu, true);
+  graphCanvasElement.addEventListener("dblclick", handleCanvasDoubleClick, true);
+
   graphCanvasElement.addEventListener("mousemove", (event) => {
     state.lastCanvasPoint = graphPointFromEvent(event);
     setHoveredInsertLink(findNearestLinkId(state.lastCanvasPoint));
   });
 
   graphCanvasElement.addEventListener("mousedown", (event) => {
+    state.lastPointerButton = event.button;
     const point = graphPointFromEvent(event);
     const node = graph.getNodeOnPos(point[0], point[1], graphCanvas.visible_nodes, 5);
     state.draggingNodeForInsert = node ? {
@@ -4127,6 +5289,9 @@ function bindGraphCanvasInsertEvents() {
   });
 
   graphCanvasElement.addEventListener("mouseup", (event) => {
+    window.setTimeout(() => {
+      state.lastPointerButton = null;
+    }, 250);
     const drag = state.draggingNodeForInsert;
     state.draggingNodeForInsert = null;
     if (!drag?.node || drag.node.flags?.collapsed) return;
@@ -4140,9 +5305,15 @@ function bindGraphCanvasInsertEvents() {
   });
 
   graphCanvasElement.addEventListener("click", (event) => {
+    if (state.suppressNextCanvasClick) {
+      state.suppressNextCanvasClick = false;
+      return;
+    }
     const point = graphPointFromEvent(event);
     if (graph.getNodeOnPos(point[0], point[1], graphCanvas.visible_nodes, 4)) return;
-    setSelectedInsertLink(findNearestLinkId(point));
+    const linkId = findNearestLinkId(point);
+    setSelectedInsertLink(linkId);
+    if (!linkId) graphCanvas.deselectAllNodes();
   });
 
   graphCanvasElement.addEventListener("contextmenu", (event) => {
@@ -4169,6 +5340,165 @@ function bindGraphCanvasInsertEvents() {
     const point = graphPointFromEvent(event);
     addGraphNode(type, { position: point });
   });
+}
+
+function suppressUnexpectedContextMenu(event) {
+  if (state.lastPointerButton === 2) return;
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function handleCanvasMarqueeMove(event) {
+  if (!state.marquee) return;
+  state.marquee.current = graphPointFromEvent(event);
+  graphCanvas.setDirty(true, true);
+  event.preventDefault();
+}
+
+function handleCanvasMarqueeUp(event) {
+  if (!state.marquee) return;
+  window.removeEventListener("mousemove", handleCanvasMarqueeMove, true);
+  window.removeEventListener("mouseup", handleCanvasMarqueeUp, true);
+  graphCanvasElement.classList.remove("marquee-selecting");
+  const marquee = state.marquee;
+  state.marquee = null;
+  marquee.current = graphPointFromEvent(event);
+  const moved = Math.hypot(event.clientX - marquee.screenStart[0], event.clientY - marquee.screenStart[1]);
+  state.suppressNextCanvasClick = moved > 6;
+  if (moved > 6) selectNodesInMarquee(marquee);
+  resetGraphCanvasPointerState();
+  graphCanvas.setDirty(true, true);
+  event.preventDefault();
+}
+
+function startCanvasPan(event) {
+  state.canvasPan = {
+    last: [event.clientX, event.clientY]
+  };
+  graphCanvasElement.style.cursor = "grabbing";
+  window.addEventListener("mousemove", handleCanvasPanMove, true);
+  window.addEventListener("mouseup", handleCanvasPanUp, true);
+}
+
+function handleCanvasPanMove(event) {
+  if (!state.canvasPan) return;
+  const deltaX = event.clientX - state.canvasPan.last[0];
+  const deltaY = event.clientY - state.canvasPan.last[1];
+  state.canvasPan.last = [event.clientX, event.clientY];
+  graphCanvas.ds.offset[0] += deltaX / graphCanvas.ds.scale;
+  graphCanvas.ds.offset[1] += deltaY / graphCanvas.ds.scale;
+  graphCanvas.setDirty(true, true);
+  event.preventDefault();
+}
+
+function handleCanvasPanUp(event) {
+  if (!state.canvasPan) return;
+  state.canvasPan = null;
+  state.suppressNextCanvasClick = true;
+  graphCanvasElement.style.cursor = "";
+  window.removeEventListener("mousemove", handleCanvasPanMove, true);
+  window.removeEventListener("mouseup", handleCanvasPanUp, true);
+  resetGraphCanvasPointerState();
+  event.preventDefault();
+}
+
+function handleCanvasDoubleClick(event) {
+  const point = graphPointFromEvent(event);
+  if (graph.getNodeOnPos(point[0], point[1], graphCanvas.visible_nodes, 5)) return;
+  const group = graph.getGroupOnPos(point[0], point[1]);
+  if (!group) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  renameGraphGroup(group);
+}
+
+function handleGraphCanvasMouse(event) {
+  if (event.type !== "mousedown" || event.which !== 1) return false;
+  const point = [event.canvasX, event.canvasY];
+  const node = graph.getNodeOnPos(point[0], point[1], graphCanvas.visible_nodes, 5);
+  const group = graph.getGroupOnPos(point[0], point[1]);
+  if (state.spacePan && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    startCanvasPan(event);
+    event.preventDefault();
+    return true;
+  }
+  if (node || group || event.ctrlKey || event.metaKey || event.altKey) return false;
+  state.marquee = {
+    start: point,
+    current: point,
+    screenStart: [event.clientX, event.clientY],
+    add: event.shiftKey
+  };
+  graphCanvasElement.classList.add("marquee-selecting");
+  window.addEventListener("mousemove", handleCanvasMarqueeMove, true);
+  window.addEventListener("mouseup", handleCanvasMarqueeUp, true);
+  graphCanvas.setDirty(true, true);
+  event.preventDefault();
+  return true;
+}
+
+function handleGraphSelectionChange(selectedNodes = {}) {
+  const nodes = Object.values(selectedNodes);
+  selectGraphNode(nodes.length === 1 ? nodes[0] : null);
+}
+
+function selectNodesInMarquee(marquee) {
+  const bounds = normalizedRect(marquee.start, marquee.current);
+  const nodeBounds = new Float32Array(4);
+  const selected = graph._nodes.filter((node) => {
+    node.getBounding(nodeBounds);
+    return rectsOverlap(bounds, {
+      x: nodeBounds[0],
+      y: nodeBounds[1],
+      width: nodeBounds[2],
+      height: nodeBounds[3]
+    });
+  });
+  graphCanvas.selectNodes(selected, marquee.add);
+  graphCanvas.setDirty(true, true);
+}
+
+function drawGraphCanvasOverlay(ctx) {
+  if (!state.marquee) return;
+  const rect = normalizedRect(state.marquee.start, state.marquee.current);
+  ctx.save();
+  ctx.lineWidth = 1 / Math.max(0.001, graphCanvas.ds.scale);
+  ctx.strokeStyle = "rgba(80, 103, 84, 0.95)";
+  ctx.fillStyle = "rgba(80, 103, 84, 0.12)";
+  ctx.setLineDash([8 / graphCanvas.ds.scale, 5 / graphCanvas.ds.scale]);
+  ctx.beginPath();
+  ctx.rect(rect.x, rect.y, rect.width, rect.height);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function normalizedRect(start, end) {
+  const x = Math.min(start[0], end[0]);
+  const y = Math.min(start[1], end[1]);
+  return {
+    x,
+    y,
+    width: Math.abs(end[0] - start[0]),
+    height: Math.abs(end[1] - start[1])
+  };
+}
+
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y;
+}
+
+function renameGraphGroup(group) {
+  const name = window.prompt("Group name", group.title || "Group");
+  if (name === null) return;
+  const title = name.trim();
+  if (!title || title === group.title) return;
+  group.title = title;
+  graphCanvas.setDirty(true, true);
+  scheduleUndoSnapshot();
 }
 
 function bindPreciseNumericInput() {
@@ -4554,11 +5884,23 @@ function fitGraphView() {
 
 function exportPng() {
   runGraphOnce();
-  const exportScale = parseExportScale(state.lastPreviewOptions.export_scale);
+  const canvas = renderPreviewCanvas();
+  if (!canvas) return;
+  canvas.toBlob((blob) => downloadBlob(blob, "nomadic-graphics.png"));
+}
+
+function renderPreviewCanvas({ scale = parseExportScale(state.lastPreviewOptions.export_scale) } = {}) {
+  if (!state.lastPreview) return null;
   const exportSize = previewExportSize(state.lastPreviewOptions, state.lastPreview);
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(exportSize.width * exportScale));
-  canvas.height = Math.max(1, Math.round(exportSize.height * exportScale));
+  canvas.width = Math.max(1, Math.round(exportSize.width * scale));
+  canvas.height = Math.max(1, Math.round(exportSize.height * scale));
+  drawPreviewToCanvas(canvas);
+  return canvas;
+}
+
+function drawPreviewToCanvas(canvas) {
+  if (!canvas || !state.lastPreview) return;
   NomadicGeometry.draw(canvas.getContext("2d"), state.lastPreview, {
     x: 0,
     y: 0,
@@ -4572,12 +5914,159 @@ function exportPng() {
     artboardHeight: state.lastPreviewOptions.height,
     fit: state.lastPreviewOptions.fit
   });
-  canvas.toBlob((blob) => downloadBlob(blob, "nomadic-graphics.png"));
 }
 
 function exportSvg() {
   runGraphOnce();
   downloadBlob(new Blob([NomadicGeometry.toSvg(state.lastPreview, previewGeometryOptions(state.lastPreviewOptions))], { type: "image/svg+xml" }), "nomadic-graphics.svg");
+}
+
+async function startVideoRecording() {
+  if (state.videoRecording) return;
+  runGraphOnce();
+  const canvas = renderPreviewCanvas({ scale: 1 });
+  if (!canvas) {
+    flashButton(recordVideoButton, "No preview");
+    return;
+  }
+  if (!canvas.captureStream || !window.MediaRecorder) {
+    flashButton(recordVideoButton, "No REC");
+    return;
+  }
+
+  const fps = activeVideoFps();
+  const canvasStream = canvas.captureStream(fps);
+  const audioCaptures = await captureRecordingAudioStreams();
+  audioCaptures.forEach((capture) => {
+    capture.stream.getAudioTracks().forEach((track) => canvasStream.addTrack(track));
+  });
+
+  const mimeType = bestRecordingMimeType();
+  const recorder = new MediaRecorder(canvasStream, mimeType ? { mimeType } : undefined);
+  const chunks = [];
+  const recording = {
+    canvas,
+    canvasStream,
+    audioCaptures,
+    frame: null,
+    recorder
+  };
+  state.videoRecording = recording;
+  if (recordVideoButton) {
+    recordVideoButton.dataset.label = recordVideoButton.dataset.label || recordVideoButton.textContent;
+    recordVideoButton.textContent = "REC...";
+    recordVideoButton.disabled = true;
+  }
+  if (stopRecordVideoButton) stopRecordVideoButton.disabled = false;
+
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data?.size) chunks.push(event.data);
+  });
+  recorder.addEventListener("stop", () => {
+    const blob = new Blob(chunks, { type: recorder.mimeType || "video/webm" });
+    cleanupVideoRecording(recording);
+    downloadBlob(blob, `nomadic-graphics-${timestampSlug()}.webm`);
+  });
+  recorder.start(1000);
+
+  const draw = () => {
+    if (state.videoRecording !== recording) return;
+    drawPreviewToCanvas(canvas);
+    const [track] = canvasStream.getVideoTracks();
+    if (track?.requestFrame) track.requestFrame();
+    recording.frame = window.requestAnimationFrame(draw);
+  };
+  draw();
+}
+
+function stopVideoRecording() {
+  const recording = state.videoRecording;
+  if (!recording) {
+    flashButton(stopRecordVideoButton, "Idle");
+    return;
+  }
+  if (recording.recorder.state !== "inactive") {
+    recording.recorder.stop();
+  } else {
+    cleanupVideoRecording(recording);
+  }
+}
+
+function cleanupVideoRecording(recording) {
+  if (recording.frame) window.cancelAnimationFrame(recording.frame);
+  recording.canvasStream?.getTracks().forEach((track) => track.stop());
+  recording.audioCaptures?.forEach((capture) => {
+    capture.stream?.getTracks().forEach((track) => track.stop());
+    if (capture.element) {
+      capture.element.pause();
+      capture.element.removeAttribute("src");
+      capture.element.load();
+    }
+  });
+  if (state.videoRecording === recording) state.videoRecording = null;
+  if (recordVideoButton) {
+    recordVideoButton.textContent = recordVideoButton.dataset.label || "REC";
+    recordVideoButton.disabled = false;
+  }
+  if (stopRecordVideoButton) stopRecordVideoButton.disabled = true;
+}
+
+function bestRecordingMimeType() {
+  if (!window.MediaRecorder?.isTypeSupported) return "";
+  return [
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm"
+  ].find((type) => MediaRecorder.isTypeSupported(type)) || "";
+}
+
+function activeVideoFps() {
+  const active = [...state.videoPlayers.values()].find((player) => player.video && !player.video.paused && !player.video.ended);
+  const node = active ? graph?._nodes?.find((item) => state.videoPlayers.get(item.id) === active) : null;
+  return clampNumber(Number(node?.properties?.fps || 24), 1, 30);
+}
+
+async function captureRecordingAudioStreams() {
+  const captures = [];
+  const audioElement = state.audioPlayer?.element;
+  const audioStream = captureElementStream(audioElement);
+  if (audioStream?.getAudioTracks().length) captures.push({ stream: audioStream });
+
+  for (const [nodeId, player] of state.videoPlayers) {
+    if (!player.video || player.video.paused || player.video.ended) continue;
+    const node = graph?._nodes?.find((item) => item.id === nodeId);
+    const dataUrl = node?.properties?.video_data_url;
+    if (!dataUrl) continue;
+    const element = document.createElement("video");
+    element.src = dataUrl;
+    element.muted = false;
+    element.playsInline = true;
+    try {
+      element.currentTime = player.video.currentTime || 0;
+    } catch {}
+    try {
+      await element.play();
+      const stream = captureElementStream(element);
+      if (stream?.getAudioTracks().length) captures.push({ stream, element });
+      else {
+        element.pause();
+        element.removeAttribute("src");
+        element.load();
+      }
+    } catch {
+      element.pause();
+    }
+  }
+  return captures;
+}
+
+function captureElementStream(element) {
+  if (!element) return null;
+  return element.captureStream?.() || element.mozCaptureStream?.() || null;
+}
+
+function timestampSlug() {
+  return new Date().toISOString().replace(/[:.]/g, "-");
 }
 
 function parseExportScale(value) {
@@ -4667,6 +6156,7 @@ function pushUndoSnapshot() {
   }
   state.lastUndoSnapshot = snapshot;
   updatePatchControls();
+  scheduleRecoverySnapshot();
 }
 
 function undoPatch() {
@@ -4690,6 +6180,7 @@ function restoreUndoSnapshot(snapshot) {
 
 function savePatchToStorage() {
   const saved = writeStoredValue(PATCH_STORAGE_KEY, JSON.stringify(currentPatch({ includeSavedAt: true })));
+  scheduleRecoverySnapshot(0);
   flashButton(savePatchButton, saved ? "Saved" : "Full");
   updatePatchControls();
 }
@@ -4748,7 +6239,72 @@ function applyPatch(patch, { resetHistory = true, applyPatchTheme = true } = {})
   selectGraphNode(null);
   if (resetHistory) resetUndoHistory();
   updatePatchControls();
+  scheduleRecoverySnapshot(600);
   return true;
+}
+
+function scheduleRecoverySnapshot(delay = 900) {
+  if (state.isRestoring || !graph) return;
+  window.clearTimeout(state.recoveryTimer);
+  state.recoveryTimer = window.setTimeout(writeRecoverySnapshot, delay);
+}
+
+async function writeRecoverySnapshot() {
+  if (!graph) return;
+  try {
+    const db = await openKeyValueDb(RECOVERY_CACHE_DB, RECOVERY_CACHE_STORE);
+    if (!db) return;
+    const patch = currentPatch({ includeSavedAt: true });
+    patch.recovery_saved_at = new Date().toISOString();
+    await putKeyValue(db, RECOVERY_CACHE_STORE, RECOVERY_CACHE_KEY, patch);
+  } catch (error) {
+    console.warn("Could not write recovery snapshot", error);
+  }
+}
+
+async function restoreRecoverySnapshotOnStart() {
+  try {
+    const db = await openKeyValueDb(RECOVERY_CACHE_DB, RECOVERY_CACHE_STORE);
+    if (!db) return;
+    const patch = await getKeyValue(db, RECOVERY_CACHE_STORE, RECOVERY_CACHE_KEY);
+    if (!patch?.graph?.nodes?.length) return;
+    const savedAt = patch.recovery_saved_at || patch.saved_at || "";
+    const shouldRestore = window.confirm(`Restore last recovery snapshot${savedAt ? ` from ${savedAt}` : ""}?`);
+    if (!shouldRestore) return;
+    applyPatch(patch);
+  } catch (error) {
+    console.warn("Could not restore recovery snapshot", error);
+  }
+}
+
+function openKeyValueDb(name, storeName) {
+  if (!window.indexedDB) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const request = indexedDB.open(name, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(storeName)) db.createObjectStore(storeName);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+    request.onblocked = () => resolve(null);
+  });
+}
+
+function putKeyValue(db, storeName, key, value) {
+  return new Promise((resolve) => {
+    const request = db.transaction(storeName, "readwrite").objectStore(storeName).put(value, key);
+    request.onsuccess = resolve;
+    request.onerror = resolve;
+  });
+}
+
+function getKeyValue(db, storeName, key) {
+  return new Promise((resolve) => {
+    const request = db.transaction(storeName, "readonly").objectStore(storeName).get(key);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => resolve(null);
+  });
 }
 
 function syncAddCountsFromGraph() {
@@ -4804,6 +6360,149 @@ function writeStoredValue(key, value) {
   } catch {
     return false;
   }
+}
+
+function removeStoredValue(key) {
+  try {
+    window.localStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function loadDeviceSettings() {
+  try {
+    const parsed = JSON.parse(readStoredValue(SETTINGS_STORAGE_KEY) || "{}");
+    state.settings = parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    state.settings = {};
+  }
+  const legacyOpenAiKey = readStoredValue(API_KEY_STORAGE_KEY);
+  const legacyRoboflowKey = readStoredValue(ROBOFLOW_API_KEY_STORAGE_KEY);
+  if (legacyOpenAiKey && !state.settings.openaiApiKey) state.settings.openaiApiKey = legacyOpenAiKey;
+  if (legacyRoboflowKey && !state.settings.roboflowApiKey) state.settings.roboflowApiKey = legacyRoboflowKey;
+  state.openaiApiKey = state.settings.openaiApiKey || null;
+  state.roboflowApiKey = state.settings.roboflowApiKey || null;
+}
+
+function saveDeviceSettings(settings) {
+  state.settings = { ...settings };
+  state.openaiApiKey = state.settings.openaiApiKey || null;
+  state.roboflowApiKey = state.settings.roboflowApiKey || null;
+  writeStoredValue(SETTINGS_STORAGE_KEY, JSON.stringify(state.settings));
+  if (state.openaiApiKey) writeStoredValue(API_KEY_STORAGE_KEY, state.openaiApiKey);
+  else removeStoredValue(API_KEY_STORAGE_KEY);
+  if (state.roboflowApiKey) writeStoredValue(ROBOFLOW_API_KEY_STORAGE_KEY, state.roboflowApiKey);
+  else removeStoredValue(ROBOFLOW_API_KEY_STORAGE_KEY);
+}
+
+function defaultGuideLanguage() {
+  const stored = readStoredValue(GUIDE_LANGUAGE_STORAGE_KEY);
+  if (stored === "zh" || stored === "en") return stored;
+  return /^zh/i.test(navigator.language || "") ? "zh" : "en";
+}
+
+function applyGuideLanguage(language) {
+  const lang = language === "en" ? "en" : "zh";
+  const messages = GUIDE_TRANSLATIONS[lang];
+  document.documentElement.dataset.guideLanguage = lang;
+  if (guideLanguageSelect) guideLanguageSelect.value = lang;
+  document.querySelectorAll("[data-i18n]").forEach((element) => {
+    const key = element.dataset.i18n;
+    if (messages[key]) element.textContent = messages[key];
+  });
+  writeStoredValue(GUIDE_LANGUAGE_STORAGE_KEY, lang);
+}
+
+function modalById(id) {
+  if (id === "guideModal") return guideModal;
+  if (id === "settingsModal") return settingsModal;
+  if (id === "licenseModal") return licenseModal;
+  return null;
+}
+
+function openModal(modal) {
+  if (modal) modal.hidden = false;
+}
+
+function closeModal(modal) {
+  if (modal) modal.hidden = true;
+}
+
+function populateSettingsForm() {
+  if (!settingsForm) return;
+  const settings = state.settings || {};
+  settingsForm.querySelector("#settingApiBaseUrl").value = settings.openaiBaseUrl || "";
+  settingsForm.querySelector("#settingApiKey").value = settings.openaiApiKey || "";
+  settingsForm.querySelector("#settingRoboflowApiKey").value = settings.roboflowApiKey || "";
+  settingsForm.querySelector("#settingMagentaCli").value = settings.magentaCli || "";
+  settingsForm.querySelector("#settingMagentaHome").value = settings.magentaHome || "";
+  settingsForm.querySelector("#settingMagentaOutputDir").value = settings.magentaOutputDir || "";
+}
+
+function collectSettingsForm() {
+  return {
+    openaiBaseUrl: settingsForm.querySelector("#settingApiBaseUrl").value.trim(),
+    openaiApiKey: settingsForm.querySelector("#settingApiKey").value.trim(),
+    roboflowApiKey: settingsForm.querySelector("#settingRoboflowApiKey").value.trim(),
+    magentaCli: settingsForm.querySelector("#settingMagentaCli").value.trim(),
+    magentaHome: settingsForm.querySelector("#settingMagentaHome").value.trim(),
+    magentaOutputDir: settingsForm.querySelector("#settingMagentaOutputDir").value.trim()
+  };
+}
+
+function showSettings() {
+  populateSettingsForm();
+  openModal(settingsModal);
+}
+
+function showFirstRunGuideIfNeeded() {
+  if (readStoredValue(GUIDE_SEEN_STORAGE_KEY)) return;
+  openModal(guideModal);
+}
+
+function setLicenseStatus(message) {
+  if (licenseStatus) licenseStatus.textContent = message || "";
+}
+
+function showLicenseModal(message = "") {
+  setLicenseStatus(message);
+  openModal(licenseModal);
+}
+
+async function refreshLicenseStatus({ openIfInvalid = true } = {}) {
+  if (!window.licenseApi) return { valid: true, development: true };
+  const result = await window.licenseApi.getStatus().catch(() => ({ valid: false, message: "License check failed." }));
+  if (!result?.valid && openIfInvalid) showLicenseModal(result?.message || "Activation required.");
+  if (result?.valid) {
+    closeModal(licenseModal);
+    setLicenseStatus(`Activated: ${result.email}${result.edition ? ` / ${result.edition}` : ""}`);
+  }
+  return result;
+}
+
+async function activateLicense() {
+  if (!window.licenseApi) return;
+  const email = document.querySelector("#licenseEmail")?.value || "";
+  const code = document.querySelector("#licenseCode")?.value || "";
+  setLicenseStatus("Checking license...");
+  const result = await window.licenseApi.activate(email, code).catch(() => ({ valid: false, message: "License could not be activated." }));
+  if (result?.valid) {
+    closeModal(licenseModal);
+    setLicenseStatus(`Activated: ${result.email}`);
+    showFirstRunGuideIfNeeded();
+    return;
+  }
+  setLicenseStatus(result?.message || "License could not be activated.");
+}
+
+async function clearLicense() {
+  if (!window.licenseApi) return;
+  await window.licenseApi.clear().catch(() => null);
+  const code = document.querySelector("#licenseCode");
+  if (code) code.value = "";
+  showLicenseModal("License cleared.");
 }
 
 function openGptImageCacheDb() {
@@ -4904,8 +6603,14 @@ function togglePanel(name) {
 
 function handleKeyboardShortcuts(event) {
   const target = event.target;
-  const isEditable = target?.matches?.("input, textarea, select") || target?.isContentEditable;
-  if (isEditable || (!event.ctrlKey && !event.metaKey)) return;
+  const isEditable = target?.matches?.("input, textarea, select, button, a") || target?.isContentEditable;
+  if (isEditable) return;
+  if (event.code === "Space" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    event.preventDefault();
+    setSpacePan(true);
+    return;
+  }
+  if (!event.ctrlKey && !event.metaKey) return;
   const key = event.key.toLowerCase();
   if (key === "z") {
     event.preventDefault();
@@ -4916,6 +6621,85 @@ function handleKeyboardShortcuts(event) {
     event.preventDefault();
     redoPatch();
   }
+  if (key === "g") {
+    event.preventDefault();
+    groupSelectedNodes();
+  }
+}
+
+function handleKeyboardKeyup(event) {
+  if (event.code === "Space") setSpacePan(false);
+}
+
+function setSpacePan(active) {
+  state.spacePan = Boolean(active);
+  graphCanvasElement.classList.toggle("space-pan", state.spacePan);
+  if (!state.spacePan && !state.canvasPan) graphCanvasElement.style.cursor = "";
+}
+
+function clearCanvasTransientInteraction() {
+  if (state.marquee) {
+    state.marquee = null;
+    graphCanvasElement.classList.remove("marquee-selecting");
+    window.removeEventListener("mousemove", handleCanvasMarqueeMove, true);
+    window.removeEventListener("mouseup", handleCanvasMarqueeUp, true);
+  }
+  if (state.canvasPan) {
+    state.canvasPan = null;
+    window.removeEventListener("mousemove", handleCanvasPanMove, true);
+    window.removeEventListener("mouseup", handleCanvasPanUp, true);
+  }
+  setSpacePan(false);
+  resetGraphCanvasPointerState();
+  graphCanvas?.setDirty(true, true);
+}
+
+function resetGraphCanvasPointerState() {
+  if (!graphCanvas) return;
+  graphCanvas.pointer_is_down = false;
+  graphCanvas.pointer_is_double = false;
+  graphCanvas.dragging_canvas = false;
+  graphCanvas.last_mouse_dragging = false;
+}
+
+function groupSelectedNodes() {
+  const nodes = selectedGraphNodes();
+  if (!nodes.length) return;
+  const bounds = boundsForNodes(nodes, 36);
+  const group = new LiteGraph.LGraphGroup(`Group ${graph._groups.length + 1}`);
+  group.pos = [bounds.x, bounds.y];
+  group.size = [bounds.width, bounds.height];
+  group.color = "#647d68";
+  graph.add(group);
+  group.recomputeInsideNodes();
+  graphCanvas.setDirty(true, true);
+  scheduleUndoSnapshot();
+}
+
+function selectedGraphNodes() {
+  return Object.values(graphCanvas?.selected_nodes || {}).filter((node) => node && graph?._nodes?.includes(node));
+}
+
+function boundsForNodes(nodes, padding = 24) {
+  const nodeBounds = new Float32Array(4);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  nodes.forEach((node) => {
+    if (node.getBounding) node.getBounding(nodeBounds);
+    else nodeBounds.set([node.pos[0], node.pos[1], node.size[0], node.size[1]]);
+    minX = Math.min(minX, nodeBounds[0]);
+    minY = Math.min(minY, nodeBounds[1]);
+    maxX = Math.max(maxX, nodeBounds[0] + nodeBounds[2]);
+    maxY = Math.max(maxY, nodeBounds[1] + nodeBounds[3]);
+  });
+  return {
+    x: minX - padding,
+    y: minY - padding,
+    width: Math.max(140, maxX - minX + padding * 2),
+    height: Math.max(80, maxY - minY + padding * 2)
+  };
 }
 
 document.querySelector("#randomizeButton").addEventListener("click", () => {
@@ -4935,13 +6719,66 @@ toggleInspectorPanel.addEventListener("click", () => togglePanel("inspector"));
 document.querySelector("#fitButton").addEventListener("click", fitGraphView);
 document.querySelector("#exportSvgButton").addEventListener("click", exportSvg);
 document.querySelector("#exportPngButton").addEventListener("click", exportPng);
+recordVideoButton?.addEventListener("click", startVideoRecording);
+stopRecordVideoButton?.addEventListener("click", stopVideoRecording);
+settingsButton?.addEventListener("click", showSettings);
+guideButton?.addEventListener("click", () => openModal(guideModal));
+licenseButton?.addEventListener("click", () => refreshLicenseStatus({ openIfInvalid: false }).then((result) => {
+  showLicenseModal(result?.valid ? `Activated: ${result.email}` : result?.message || "");
+}));
+guideLanguageSelect?.addEventListener("change", () => applyGuideLanguage(guideLanguageSelect.value));
+openSettingsFromGuide?.addEventListener("click", () => {
+  closeModal(guideModal);
+  showSettings();
+});
+finishGuideButton?.addEventListener("click", () => {
+  writeStoredValue(GUIDE_SEEN_STORAGE_KEY, "1");
+  closeModal(guideModal);
+});
+clearSettingsButton?.addEventListener("click", () => {
+  saveDeviceSettings({});
+  populateSettingsForm();
+});
+settingsForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  saveDeviceSettings(collectSettingsForm());
+  closeModal(settingsModal);
+  graphCanvas?.setDirty(true, true);
+});
+licenseForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  activateLicense();
+});
+document.querySelector("#licenseClearButton")?.addEventListener("click", clearLicense);
+document.querySelectorAll("[data-close-modal]").forEach((button) => {
+  button.addEventListener("click", () => closeModal(modalById(button.dataset.closeModal)));
+});
+document.querySelectorAll(".modal-backdrop").forEach((modal) => {
+  modal.addEventListener("click", (event) => {
+    if (modal.id === "licenseModal") return;
+    if (event.target === modal) closeModal(modal);
+  });
+});
 window.addEventListener("resize", resizeGraphCanvas);
-window.addEventListener("keydown", handleKeyboardShortcuts);
+window.addEventListener("keydown", handleKeyboardShortcuts, true);
+window.addEventListener("keyup", handleKeyboardKeyup, true);
+window.addEventListener("blur", clearCanvasTransientInteraction);
+window.addEventListener("beforeunload", () => writeRecoverySnapshot());
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") writeRecoverySnapshot();
+});
 
+loadDeviceSettings();
+applyGuideLanguage(defaultGuideLanguage());
 loadPanelState();
 applyTheme(readStoredValue(THEME_STORAGE_KEY), { persist: false });
 applyPanelState();
 renderLibrary();
 setupGraph();
+if (stopRecordVideoButton) stopRecordVideoButton.disabled = true;
 selectGraphNode(null);
 resetUndoHistory();
+restoreRecoverySnapshotOnStart().finally(async () => {
+  const license = await refreshLicenseStatus();
+  if (license?.valid) showFirstRunGuideIfNeeded();
+});

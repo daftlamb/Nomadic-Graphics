@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const port = Number(process.env.PORT || 8788);
-const defaultApiBaseUrl = process.env.OPENAI_API_BASE_URL || process.env.NEWAPI_BASE_URL || "https://yq66.ai";
+const defaultApiBaseUrl = process.env.OPENAI_API_BASE_URL || process.env.NEWAPI_BASE_URL || "https://api.openai.com";
 const isWindows = platform() === "win32";
 const defaultMagentaCli = isWindows ? "E:\\AIEnvs\\magenta-rt\\Scripts\\mrt.exe" : "/Volumes/DOC/AI ENV/magenta-rt/bin/mrt";
 const defaultMagentaHome = isWindows ? "E:\\AIModels\\Magenta" : "/Volumes/DOC/AI ENV/Magenta";
@@ -91,10 +91,7 @@ function imageGenerationUrl(baseUrl) {
   const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   const clean = withProtocol.replace(/\/+$/, "");
   const parsed = new URL(clean);
-  const allowedHosts = new Set(["yq66.ai", "api.openai.com"]);
-  if (!allowedHosts.has(parsed.hostname)) {
-    throw new Error(`Unsupported API host: ${parsed.hostname}`);
-  }
+  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error(`Unsupported API protocol: ${parsed.protocol}`);
   if (/\/images\/generations$/i.test(parsed.pathname)) return parsed.toString();
   if (/\/v1$/i.test(parsed.pathname)) return `${clean}/images/generations`;
   return `${clean}/v1/images/generations`;
@@ -105,10 +102,7 @@ function imageEditUrl(baseUrl) {
   const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   const clean = withProtocol.replace(/\/+$/, "");
   const parsed = new URL(clean);
-  const allowedHosts = new Set(["yq66.ai", "api.openai.com"]);
-  if (!allowedHosts.has(parsed.hostname)) {
-    throw new Error(`Unsupported API host: ${parsed.hostname}`);
-  }
+  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error(`Unsupported API protocol: ${parsed.protocol}`);
   if (/\/images\/edits$/i.test(parsed.pathname)) return parsed.toString();
   if (/\/v1$/i.test(parsed.pathname)) return `${clean}/images/edits`;
   return `${clean}/v1/images/edits`;
@@ -119,10 +113,7 @@ function chatCompletionUrl(baseUrl) {
   const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   const clean = withProtocol.replace(/\/+$/, "");
   const parsed = new URL(clean);
-  const allowedHosts = new Set(["yq66.ai", "api.openai.com"]);
-  if (!allowedHosts.has(parsed.hostname)) {
-    throw new Error(`Unsupported API host: ${parsed.hostname}`);
-  }
+  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error(`Unsupported API protocol: ${parsed.protocol}`);
   if (/\/chat\/completions$/i.test(parsed.pathname)) return parsed.toString();
   if (/\/v1$/i.test(parsed.pathname)) return `${clean}/chat/completions`;
   return `${clean}/v1/chat/completions`;
@@ -152,7 +143,15 @@ function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     execFile(command, args, { ...options, timeout: options.timeout || 180_000 }, (error, stdout, stderr) => {
       if (error) {
-        const message = stderr || stdout || error.message;
+        if (error.killed || error.signal === "SIGTERM" || /timed out/i.test(String(error.message || ""))) {
+          reject(new Error(`Magenta timed out after ${Math.round((options.timeout || 180_000) / 1000)}s. Try a shorter duration, mrt2_small, or the MLX backend on Mac.`));
+          return;
+        }
+        const lines = String(stderr || stdout || error.message)
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line && !/^INFO:/i.test(line));
+        const message = lines.slice(-8).join("\n") || stderr || stdout || error.message;
         reject(new Error(String(message).trim()));
         return;
       }
@@ -188,17 +187,21 @@ async function magentaPayloadToAudio(input) {
   const backend = isWindows && requestedBackend === "mlx" ? "jax" : requestedBackend;
   const model = String(input.model || "mrt2_small").trim() || "mrt2_small";
   const duration = Math.max(1, Math.min(60, Number(input.duration || 4)));
+  if (isWindows && backend === "jax" && model === "mrt2_base" && duration > 3) {
+    throw new Error("mrt2_base on Windows/JAX is too slow for long clips. Use mrt2_small, duration <= 3s, or run mrt2_base with MLX on Mac.");
+  }
   const workDir = await mkdtemp(join(tmpdir(), "nomadic-magenta-"));
   const startedAt = Date.now() - 1000;
   try {
-    const mrtCommand = process.env.MAGENTA_RT_CLI || defaultMagentaCli;
-    const outputDir = process.env.MAGENTA_RT_OUTPUT_DIR || defaultMagentaOutputDir;
+    const mrtCommand = String(input.magenta_cli || process.env.MAGENTA_RT_CLI || defaultMagentaCli).trim();
+    const outputDir = String(input.magenta_output_dir || process.env.MAGENTA_RT_OUTPUT_DIR || defaultMagentaOutputDir).trim();
+    const magentaHome = String(input.magenta_home || process.env.MAGENTA_HOME || defaultMagentaHome).trim();
     await rm(join(outputDir, `output_audio_${backend}_${model}.wav`), { force: true }).catch(() => {});
     await runCommand(mrtCommand, [backend, "generate", "--prompt", prompt, "--duration", String(duration), `--model=${model}`], {
       cwd: workDir,
       env: {
         ...process.env,
-        MAGENTA_HOME: process.env.MAGENTA_HOME || defaultMagentaHome,
+        MAGENTA_HOME: magentaHome,
         PYTHONUTF8: "1",
         PYTHONIOENCODING: "utf-8"
       },
@@ -489,7 +492,7 @@ async function handleStatic(request, response) {
   }
 }
 
-createServer(async (request, response) => {
+const server = createServer(async (request, response) => {
   if (request.method === "OPTIONS") {
     sendCors(response);
     response.writeHead(204);
@@ -547,6 +550,16 @@ createServer(async (request, response) => {
     return;
   }
   await handleStatic(request, response);
-}).listen(port, "127.0.0.1", () => {
+});
+
+server.on("error", (error) => {
+  if (error?.code === "EADDRINUSE") {
+    console.warn(`Nomadic Graphics local proxy already running on http://127.0.0.1:${port}`);
+    return;
+  }
+  console.error(error);
+});
+
+server.listen(port, "127.0.0.1", () => {
   console.log(`Nomadic Graphics local proxy: http://127.0.0.1:${port}`);
 });

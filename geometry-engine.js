@@ -389,6 +389,89 @@
     };
   }
 
+  function createLineShape(options = {}) {
+    const mode = options.mode || "Wave";
+    const length = Number(options.length || 760);
+    const amplitude = mode === "Line" ? 0 : Number(options.amplitude || 90);
+    const frequency = Math.max(1, Math.round(Number(options.frequency || 3)));
+    const angle = Number(options.angle || 0) * Math.PI / 180;
+    const thickness = Math.max(1, Number(options.thickness || 18));
+    const raw = lineShapeRawPoints(mode, length, amplitude, frequency, angle);
+
+    const boundary = sampleOpenPolyline(raw, 6).map((pt, index, points) => {
+      const prev = points[Math.max(0, index - 1)] || pt;
+      const next = points[Math.min(points.length - 1, index + 1)] || pt;
+      const tangent = normalize(next.x - prev.x, next.y - prev.y);
+      return point(pt.x, pt.y, -tangent.y, tangent.x, "boundary");
+    });
+    const bounds = boundsFromPoints(boundary);
+
+    return {
+      ngType: "Shape",
+      kind: "line",
+      label: `${mode} Line`,
+      mode,
+      length,
+      amplitude,
+      frequency,
+      angle: Math.round(Number(options.angle || 0)),
+      thickness,
+      showBody: false,
+      bounds,
+      fill: [],
+      boundary,
+      contours: [],
+      openContours: [boundary],
+      shapeStyle: {
+        strokeWidth: thickness,
+        strokeOpacity: 1
+      },
+      history: [`Line Shape(${mode})`],
+      stats: {
+        mode,
+        length: Math.round(length),
+        amplitude: Math.round(amplitude),
+        frequency,
+        thickness: Math.round(thickness),
+        boundary: boundary.length,
+        fill: 0
+      }
+    };
+  }
+
+  function lineShapeRawPoints(mode, length, amplitude, frequency, angle) {
+    if (mode === "Line" || amplitude === 0) {
+      return [
+        rotateAroundCenter(-length / 2, 0, angle),
+        rotateAroundCenter(length / 2, 0, angle)
+      ];
+    }
+
+    const raw = [];
+
+    if (mode === "Zigzag") {
+      const bends = Math.max(2, frequency * 2);
+      for (let index = 0; index <= bends; index += 1) {
+        const t = index / bends;
+        const x = (t - 0.5) * length;
+        const y = index === 0 || index === bends
+          ? 0
+          : (index % 2 === 1 ? amplitude : -amplitude);
+        raw.push(rotateAroundCenter(x, y, angle));
+      }
+      return raw;
+    }
+
+    const steps = Math.max(24, Math.round(length / 6), frequency * 32);
+    for (let index = 0; index <= steps; index += 1) {
+      const t = index / steps;
+      const x = (t - 0.5) * length;
+      const y = Math.sin(t * TAU * frequency) * amplitude;
+      raw.push(rotateAroundCenter(x, y, angle));
+    }
+    return raw;
+  }
+
   function createSvgShape(options) {
     const rawPath = extractSvgPathData(options.path || "");
     const parsed = normalizeSvgPaths(parseSvgPathData(rawPath));
@@ -397,8 +480,8 @@
   }
 
   function createRandomPoints(options, seed) {
-    const count = Math.round(Number(options.count || 240));
-    const spread = Number(options.spread || 360);
+    const count = Math.max(1, Math.round(scalarValue(options.countValue, Number(options.count || 240))));
+    const spread = Math.max(0, scalarValue(options.spreadValue, Number(options.spread || 360)));
     const distribution = options.distribution || "Scatter";
     const points = [];
 
@@ -471,6 +554,7 @@
       opacity,
       blendMode: options.blend || "Normal",
       scale: scaleValue,
+      liveFrame: Boolean(options.liveFrame),
       history: ["Image Input"],
       stats: {
         width: Math.round(originalWidth),
@@ -1249,24 +1333,21 @@
 
   function imageWeathering(image, options = {}, seed = 0) {
     if (isType(image, "LayerSet")) {
-      const layer = (image.layers || []).find((item) => isType(item.data, "TileSet") || isType(item.data, "Image"));
-      if (!layer) return image;
-      const weathered = imageWeathering(layer.data, options, seed);
-      if (!weathered) return image;
-      if (isType(weathered, "LayerSet")) {
-        return {
-          ...weathered,
-          overlayLabels: uniqueLabels((weathered.overlayLabels || []).concat(image.overlayLabels || []))
-        };
-      }
+      const layers = (image.layers || [])
+        .map((layer, index) => ({
+          ...layer,
+          data: imageWeathering(layer.data, options, seed + index * 53) || layer.data
+        }))
+        .filter((layer) => layer.data);
       return {
-        ngType: "LayerSet",
+        ...image,
         label: `${image.label || "LayerSet"} / Image Weathering`,
-        layers: [{ data: weathered, opacity: layer.opacity ?? 1, blendMode: layer.blendMode }],
+        layers,
         overlayLabels: uniqueLabels(image.overlayLabels || []),
         history: (image.history || ["LayerSet"]).concat([`Image Weathering(${options.mode || "Photocopy"})`]),
         stats: {
-          ...(weathered.stats || {}),
+          ...(image.stats || {}),
+          layers: layers.length,
           labels: (image.overlayLabels || []).length
         }
       };
@@ -1287,12 +1368,16 @@
         }
       };
     }
+    if (isType(image, "PointSet")) return weatherPointSet(image, options, seed);
+    if (isType(image, "Artifact")) return weatherArtifact(image, options, seed);
     if (!isType(image, "Image") || !image.pixels?.length || !image.cols || !image.rows) return image || null;
 
     const mode = options.mode || "Photocopy";
-    const cacheKey = imageWeatheringCacheKey(image, options, seed);
-    const cached = weatheringCache.get(cacheKey);
-    if (cached) return weatheredImageResult(image, cached, mode, options, cacheKey);
+    const workingImage = weatheringSourceImage(image, options);
+    const cacheable = !image.liveFrame;
+    const cacheKey = imageWeatheringCacheKey(workingImage, options, seed);
+    const cached = cacheable ? weatheringCache.get(cacheKey) : null;
+    if (cached) return weatheredImageResult(workingImage, cached, mode, options, cacheKey);
 
     const exposure = Number(options.exposure || 0) / 100;
     const contrast = 0.72 + Number(options.contrast || 72) / 34;
@@ -1305,17 +1390,17 @@
     const inkColor = weatherToneColor(options.inkColor || "Signal Red");
     const paperColor = weatherToneColor(options.paperColor || "Paper");
     const localSeed = seed + Number(options.seed || 0) * 991;
-    const scratches = imageWearScratches(image, { dust, grain }, localSeed);
-    const output = new Uint8ClampedArray(image.cols * image.rows * 4);
+    const scratches = (options.quality || "Fast") === "Fast" ? [] : imageWearScratches(workingImage, { dust, grain }, localSeed);
+    const output = new Uint8ClampedArray(workingImage.cols * workingImage.rows * 4);
 
-    for (let y = 0; y < image.rows; y += 1) {
-      for (let x = 0; x < image.cols; x += 1) {
-        const index = y * image.cols + x;
+    for (let y = 0; y < workingImage.rows; y += 1) {
+      for (let x = 0; x < workingImage.cols; x += 1) {
+        const index = y * workingImage.cols + x;
         const offset = index * 4;
-        const r = image.pixels[offset] || 0;
-        const g = image.pixels[offset + 1] || 0;
-        const b = image.pixels[offset + 2] || 0;
-        const a = image.pixels[offset + 3] ?? 255;
+        const r = workingImage.pixels[offset] || 0;
+        const g = workingImage.pixels[offset + 1] || 0;
+        const b = workingImage.pixels[offset + 2] || 0;
+        const a = workingImage.pixels[offset + 3] ?? 255;
         let luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
         luma = clamp((luma - 0.5) * contrast + 0.5 + exposure);
 
@@ -1335,7 +1420,7 @@
         const inkTone = mode === "Print Transfer" ? 0.12 + fade * 0.18 : 0.05 + fade * 0.1;
         let gray = lerp(paperTone, inkTone, ink);
         if (mode === "Newsprint") {
-          const dot = newsprintDot(x, y, image.cols, image.rows);
+          const dot = newsprintDot(x, y, workingImage.cols, workingImage.rows);
           gray = lerp(gray, inkTone, ink * dot * 0.26);
         }
 
@@ -1355,8 +1440,127 @@
     }
 
     const pixels = Array.from(output);
-    cacheSetLimited(weatheringCache, cacheKey, pixels);
-    return weatheredImageResult(image, pixels, mode, options, cacheKey);
+    if (cacheable) cacheSetLimited(weatheringCache, cacheKey, pixels);
+    return weatheredImageResult(workingImage, pixels, mode, options, cacheKey);
+  }
+
+  function weatherPointSet(pointSet, options = {}, seed = 0) {
+    const dust = clamp(Number(options.dust || 30) / 100);
+    const grain = clamp(Number(options.grain || 46) / 100);
+    const fade = clamp(Number(options.fade || 16) / 100);
+    const paper = clamp(Number(options.paper || 52) / 100);
+    const mode = options.mode || "Photocopy";
+    const localSeed = seed + Number(options.seed || 0) * 991;
+    const dropChance = clamp(dust * 0.22 + fade * 0.12, 0, 0.62);
+    const points = (pointSet.points || [])
+      .filter((pt, index) => noise(localSeed + 901, index * 13) > dropChance * (0.35 + noise(localSeed + 907, index) * 0.9))
+      .map((pt, index) => {
+        const jitter = (0.4 + paper * 3.2 + grain * 2.4) * noise(localSeed + 911, index * 5);
+        const angle = noise(localSeed + 917, index * 7) * TAU;
+        const scaleWear = clamp(1 - fade * 0.5 + (noise(localSeed + 919, index * 11) - 0.5) * grain * 0.45, 0.12, 2.2);
+        return {
+          ...pt,
+          x: pt.x + Math.cos(angle) * jitter,
+          y: pt.y + Math.sin(angle) * jitter,
+          scale: (pt.scale || 1) * scaleWear,
+          a: clamp((pt.a ?? 0.72) * (1 - fade * 0.7) * (0.62 + noise(localSeed + 923, index) * 0.58), 0.05, 1),
+          color: weatherPointColor(pt.color, options, index, localSeed)
+        };
+      });
+    const dustMarks = Math.round((pointSet.points?.length || 0) * dust * 0.08);
+    for (let index = 0; index < dustMarks; index += 1) {
+      const base = pointSet.points[Math.floor(noise(localSeed + 929, index) * Math.max(1, pointSet.points.length))];
+      if (!base) continue;
+      points.push({
+        x: base.x + (noise(localSeed + 931, index) - 0.5) * 36,
+        y: base.y + (noise(localSeed + 937, index) - 0.5) * 28,
+        nx: 0,
+        ny: -1,
+        role: "dust",
+        scale: 0.18 + noise(localSeed + 941, index) * 0.85,
+        color: mode === "Archive Dust" ? "#beb7a7" : "#20231f",
+        a: clamp(0.08 + dust * 0.22, 0.05, 0.34)
+      });
+    }
+    return {
+      ...pointSet,
+      label: `${pointSet.label || "PointSet"} / Image Weathering`,
+      points,
+      history: (pointSet.history || ["PointSet"]).concat([`Image Weathering(${mode})`]),
+      stats: {
+        ...(pointSet.stats || {}),
+        material: mode,
+        points: points.length,
+        dropped: Math.max(0, (pointSet.points || []).length - points.length + dustMarks),
+        grain: Math.round(grain * 100),
+        dust: Math.round(dust * 100),
+        fade: Math.round(fade * 100)
+      }
+    };
+  }
+
+  function weatherArtifact(artifact, options = {}, seed = 0) {
+    const weatheredMarks = weatherPointSet({
+      ngType: "PointSet",
+      label: artifact.label || "Artifact",
+      points: (artifact.marks || []).map((mark) => ({
+        x: mark.x,
+        y: mark.y,
+        nx: 0,
+        ny: -1,
+        role: "mark",
+        scale: Math.max(0.1, Number(mark.r || 1) / 4),
+        color: mark.color,
+        a: mark.a
+      }))
+    }, options, seed);
+    return {
+      ...artifact,
+      label: `${artifact.label || "Artifact"} / Image Weathering`,
+      marks: (weatheredMarks.points || []).map((pt) => ({
+        x: pt.x,
+        y: pt.y,
+        r: pointRadius(pt, 4),
+        a: pt.a,
+        color: pt.color
+      })),
+      history: (artifact.history || ["Artifact"]).concat([`Image Weathering(${options.mode || "Photocopy"})`]),
+      stats: {
+        ...(artifact.stats || {}),
+        material: options.mode || "Photocopy",
+        marks: weatheredMarks.points?.length || 0
+      }
+    };
+  }
+
+  function weatherPointColor(color, options, index, seed) {
+    const fade = clamp(Number(options.fade || 16) / 100);
+    const paper = clamp(Number(options.paper || 52) / 100);
+    const source = hexToRgbUnit(color || (index % 8 === 0 ? "#9b6048" : "#20231f"));
+    const paperColor = weatherToneColor(options.paperColor || "Paper");
+    const gray = (source.r + source.g + source.b) / 3;
+    const desaturate = fade * 0.35 + paper * 0.12;
+    const tint = fade * 0.5 + noise(seed + 947, index) * paper * 0.18;
+    return rgbUnitToHex({
+      r: clamp(lerp(lerp(source.r, gray, desaturate), paperColor.r, tint)),
+      g: clamp(lerp(lerp(source.g, gray, desaturate), paperColor.g, tint)),
+      b: clamp(lerp(lerp(source.b, gray, desaturate), paperColor.b, tint))
+    });
+  }
+
+  function weatheringSourceImage(image, options = {}) {
+    const quality = options.quality || "Fast";
+    const maxSide = quality === "Full" ? 0 : quality === "Balanced" ? 320 : 220;
+    if (!maxSide || Math.max(Number(image.cols || 0), Number(image.rows || 0)) <= maxSide) return image;
+    const sampled = resampleImageForField(image, maxSide);
+    return {
+      ...image,
+      dataUrl: null,
+      pixels: sampled.pixels,
+      cols: sampled.cols,
+      rows: sampled.rows,
+      rasterKey: `${image.rasterKey || rasterImageKey(image)}:weather-src:${quality}:${sampled.cols}x${sampled.rows}`
+    };
   }
 
   function imageWeatheringCacheKey(image, options, seed) {
@@ -1367,6 +1571,7 @@
       pixelFingerprint(image.pixels),
       options.mode || "Photocopy",
       options.tone || "Neutral",
+      options.quality || "Fast",
       options.inkColor || "Signal Red",
       options.paperColor || "Paper",
       Math.round(Number(options.toneAmount || 0)),
@@ -1474,6 +1679,11 @@
       g: parseInt(full.slice(2, 4), 16) / 255,
       b: parseInt(full.slice(4, 6), 16) / 255
     };
+  }
+
+  function rgbUnitToHex(color) {
+    const channel = (value) => Math.round(clamp(value) * 255).toString(16).padStart(2, "0");
+    return `#${channel(color.r)}${channel(color.g)}${channel(color.b)}`;
   }
 
   function imageInkAmount(luma, mode, fade, grain, seed, x, y) {
@@ -1970,6 +2180,7 @@
       boundary: (shape.boundary || []).map(transformPoint),
       guides: (shape.guides || []).map((path) => path.map(transformPoint)),
       contours: (shape.contours || []).map((path) => path.map(transformPoint)),
+      openContours: (shape.openContours || []).map((path) => path.map(transformPoint)),
       history: shape.history.concat([`Scale Shape(${round(factor)})`]),
       stats: {
         ...(shape.stats || {}),
@@ -2506,8 +2717,8 @@
 
   function smoothTrace(traceSet, options) {
     if (!isType(traceSet, "TraceSet")) return null;
-    const amount = clamp(Number(options.amount || 55) / 100);
-    const passes = Math.max(1, Math.round(Number(options.passes || 2)));
+    const amount = clamp(scalarValue(options.amountValue, Number(options.amount || 55)) / 100);
+    const passes = Math.max(1, Math.round(scalarValue(options.passesValue, Number(options.passes || 2))));
     const paths = (traceSet.paths || []).map((path) => smoothPath(path, amount, passes));
     return {
       ...traceSet,
@@ -2525,8 +2736,8 @@
 
   function curveTension(traceSet, options) {
     if (!isType(traceSet, "TraceSet")) return null;
-    const tension = clamp(Number(options.tension || 48) / 100);
-    const sag = Number(options.sag || 0);
+    const tension = clamp(scalarValue(options.tensionValue, Number(options.tension || 48)) / 100);
+    const sag = scalarValue(options.sagValue, Number(options.sag || 0));
     const paths = (traceSet.paths || []).map((path, index) => curvePath(path, tension, sag, index));
     return {
       ...traceSet,
@@ -3539,6 +3750,30 @@
       };
     }
 
+    if (isType(input, "PointSet")) {
+      if (!colorStroke) return {
+        ...input,
+        history: (input.history || [input.label || "PointSet"]).concat([title]),
+        stats: { ...(input.stats || {}), randomColorTarget: target }
+      };
+      const points = (input.points || []).map((pt, index) => ({
+        ...pt,
+        color: colorForRandomStroke(index, options, seed + 13),
+        a: opacity
+      }));
+      return {
+        ...input,
+        label: `${input.label || "PointSet"} / Random Color`,
+        points,
+        history: (input.history || [input.label || "PointSet"]).concat([title]),
+        stats: {
+          ...(input.stats || {}),
+          randomStrokePalette: palette,
+          randomPointColors: new Set(points.map((pt) => pt.color).filter(Boolean)).size
+        }
+      };
+    }
+
     if (isType(input, "Shape")) {
       const contourCount = Math.max(1, input.contours?.length || (input.boundary?.length ? 1 : 0));
       const strokeColors = colorStroke
@@ -3638,6 +3873,110 @@
     }
 
     return null;
+  }
+
+  function colorize(input, options = {}, seed = 0) {
+    if (!input) return null;
+    const title = `Colorize(${options.mode || "Duotone"})`;
+    if (isType(input, "LayerSet")) {
+      const layers = (input.layers || []).map((layer, index) => ({
+        ...layer,
+        data: colorize(layer.data, options, seed + index * 41) || layer.data
+      }));
+      return {
+        ...input,
+        label: `${input.label || "Layer Set"} / Colorize`,
+        layers,
+        history: (input.history || [input.label || "Layer Set"]).concat([title]),
+        stats: {
+          ...(input.stats || {}),
+          colorizeMode: options.mode || "Duotone",
+          layers: layers.length
+        }
+      };
+    }
+    if (isType(input, "TileSet")) {
+      const image = colorizeImage(input.image, options, seed, title);
+      if (!image) return input;
+      return {
+        ...input,
+        image,
+        label: `${input.label || "TileSet"} / Colorize`,
+        history: (input.history || ["TileSet"]).concat([title]),
+        stats: {
+          ...(input.stats || {}),
+          colorizeMode: options.mode || "Duotone"
+        }
+      };
+    }
+    if (isType(input, "Image")) return colorizeImage(input, options, seed, title);
+    return input;
+  }
+
+  function colorizeImage(image, options = {}, seed = 0, title = "Colorize") {
+    if (!isType(image, "Image") || !image.pixels?.length || !image.cols || !image.rows) return image || null;
+    const mode = options.mode || "Duotone";
+    const amount = clamp(Number(options.amount ?? 100) / 100);
+    const contrast = 0.5 + Number(options.contrast ?? 50) / 50;
+    const ink = hexToRgbUnit(PALETTE[options.ink || "Signal Red"] || "#d61c2a");
+    const paper = hexToRgbUnit(PALETTE[options.paper || "Paper"] || "#f8f5eb");
+    const palette = randomStrokePalette(options.palette || "Riso", seed + Number(options.seed || 0) * 97);
+    const output = new Uint8ClampedArray(image.cols * image.rows * 4);
+
+    for (let index = 0; index < image.cols * image.rows; index += 1) {
+      const offset = index * 4;
+      const r = image.pixels[offset] || 0;
+      const g = image.pixels[offset + 1] || 0;
+      const b = image.pixels[offset + 2] || 0;
+      const a = image.pixels[offset + 3] ?? 255;
+      let luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      luma = clamp((luma - 0.5) * contrast + 0.5);
+      const mapped = colorizePixelColor(luma, { mode, ink, paper, palette });
+      output[offset] = Math.round(lerp(r, mapped.r * 255, amount));
+      output[offset + 1] = Math.round(lerp(g, mapped.g * 255, amount));
+      output[offset + 2] = Math.round(lerp(b, mapped.b * 255, amount));
+      output[offset + 3] = a;
+    }
+
+    return {
+      ...image,
+      dataUrl: null,
+      pixels: Array.from(output),
+      rasterKey: `colorize:${image.cols}x${image.rows}:${pixelFingerprint(image.pixels)}:${mode}:${options.ink}:${options.paper}:${options.palette}:${options.amount}:${options.contrast}:${options.seed}:${seed}`,
+      label: `${image.label || "Image"} / Colorize`,
+      history: (image.history || ["Image Input"]).concat([title]),
+      stats: {
+        ...(image.stats || {}),
+        colorizeMode: mode,
+        colorizeAmount: Math.round(amount * 100)
+      }
+    };
+  }
+
+  function colorizePixelColor(luma, options) {
+    if (options.mode === "Tint") {
+      return {
+        r: lerp(options.ink.r * 0.55, options.ink.r, luma),
+        g: lerp(options.ink.g * 0.55, options.ink.g, luma),
+        b: lerp(options.ink.b * 0.55, options.ink.b, luma)
+      };
+    }
+    if (options.mode === "Invert Duotone") {
+      return {
+        r: lerp(options.paper.r, options.ink.r, luma),
+        g: lerp(options.paper.g, options.ink.g, luma),
+        b: lerp(options.paper.b, options.ink.b, luma)
+      };
+    }
+    if (options.mode === "Palette") {
+      const index = Math.min(options.palette.length - 1, Math.floor((1 - luma) * options.palette.length));
+      return hexToRgbUnit(options.palette[index] || options.palette[0] || "#20231f");
+    }
+    return {
+      r: lerp(options.ink.r, options.paper.r, luma),
+      g: lerp(options.ink.g, options.paper.g, luma),
+      b: lerp(options.ink.b, options.paper.b, luma)
+    };
   }
 
   function randomColorImage(image, options, seed, title) {
@@ -4045,8 +4384,8 @@
     if (!a || !b) return null;
     const blendB = options.blendB && options.blendB !== "Source" ? options.blendB : b.blendMode || "Normal";
     const layers = [
-      { data: a, opacity: clamp(Number(options.opacityA || 100) / 100) },
-      { data: b, opacity: clamp(Number(options.opacityB || 78) / 100), blendMode: blendB }
+      { data: a, opacity: clamp(Number(options.opacityA ?? 100) / 100) },
+      { data: b, opacity: clamp(Number(options.opacityB ?? 78) / 100), blendMode: blendB }
     ];
 
     return {
@@ -4177,7 +4516,7 @@
 
   function erode(traceSet, options, seed) {
     if (!isType(traceSet, "TraceSet")) return null;
-    const amount = Number(options.amount || 42) / 100;
+    const amount = clamp(scalarValue(options.amountValue, Number(options.amount || 42)) / 100);
     const paths = [];
 
     traceSet.paths.forEach((path, pathIndex) => {
@@ -4257,9 +4596,9 @@
   function ditherImage(image, options = {}, seed = 0) {
     if (!isType(image, "Image") || !image.pixels?.length || !image.cols || !image.rows) return image || null;
     const mode = options.mode || "Bayer";
-    const threshold = clamp(Number(options.threshold ?? 50) / 100);
-    const scale = Math.max(1, Math.round(Number(options.scale || 2)));
-    const mix = clamp(Number(options.mix ?? 100) / 100);
+    const threshold = clamp(scalarValue(options.thresholdValue, Number(options.threshold ?? 50)) / 100);
+    const scale = Math.max(1, Math.round(scalarValue(options.scaleValue, Number(options.scale || 2))));
+    const mix = clamp(scalarValue(options.mixValue, Number(options.mix ?? 100)) / 100);
     const key = [
       "dither",
       image.cols,
@@ -4475,11 +4814,7 @@
   function drawContent(ctx, data) {
     if (isType(data, "LayerSet")) {
       data.layers.forEach((layer) => {
-        ctx.save();
-        ctx.globalAlpha = layer.opacity;
-        ctx.globalCompositeOperation = canvasBlendMode(layer.blendMode || layer.data?.blendMode);
-        drawContent(ctx, layer.data);
-        ctx.restore();
+        drawLayer(ctx, layer);
       });
       drawLabels(ctx, data.overlayLabels || []);
     } else if (isType(data, "Image")) {
@@ -4507,6 +4842,21 @@
       drawMarks(ctx, data.marks || []);
       drawLabels(ctx, data.labels || []);
     }
+  }
+
+  function drawLayer(ctx, layer) {
+    if (!layer?.data) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+    const layerCtx = canvas.getContext("2d");
+    if (!layerCtx) return;
+    drawContent(layerCtx, layer.data);
+    ctx.save();
+    ctx.globalAlpha = layer.opacity ?? 1;
+    ctx.globalCompositeOperation = canvasBlendMode(layer.blendMode || layer.data?.blendMode);
+    ctx.drawImage(canvas, 0, 0);
+    ctx.restore();
   }
 
   function drawPaper(ctx, x, y, width, height, options = {}) {
@@ -4564,7 +4914,7 @@
   }
 
   function drawShape(ctx, shape, alpha = 0.45) {
-    if (!shape || shape.showBody === false) return;
+    if (!shape || (shape.showBody === false && !shape.openContours?.length)) return;
     ctx.save();
     ctx.lineWidth = shapeStrokeWidth(shape);
     if (shape.rasterMask) {
@@ -4595,6 +4945,11 @@
       ctx.arc(CX, CY, shape.radius, 0, TAU);
       ctx.stroke();
     }
+    if (shape.kind === "line" && shape.showBody === false) {
+      drawOpenShapeContours(ctx, shape, alpha);
+      ctx.restore();
+      return;
+    }
     if (shape.kind !== "text" && shape.kind !== "circle" && shape.contours?.length) {
       if (shape.shapeStyle?.fillColor) {
         ctx.beginPath();
@@ -4623,6 +4978,9 @@
         ctx.stroke();
       });
     }
+    if (shape.openContours?.length && !(shape.kind === "line" && shape.showBody !== false)) {
+      drawOpenShapeContours(ctx, shape, alpha);
+    }
     if (shape.kind !== "text" && shape.kind !== "circle" && !shape.contours?.length && shape.boundary?.length) {
       const samples = decimate(shape.boundary, 1200);
       samples.forEach((pt) => {
@@ -4639,13 +4997,39 @@
   function drawPoints(ctx, points) {
     ctx.save();
     points.forEach((p, index) => {
-      ctx.globalAlpha = 0.55;
-      ctx.fillStyle = index % 8 === 0 ? "#9b6048" : "#20231f";
+      ctx.globalAlpha = p.a ?? 0.55;
+      ctx.fillStyle = p.color || (index % 8 === 0 ? "#9b6048" : "#20231f");
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 2.2, 0, TAU);
+      ctx.arc(p.x, p.y, pointRadius(p), 0, TAU);
       ctx.fill();
     });
     ctx.restore();
+  }
+
+  function drawOpenShapeContours(ctx, shape, alpha) {
+    ctx.save();
+    ctx.lineWidth = shapeStrokeWidth(shape);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    (shape.openContours || []).forEach((contour, contourIndex) => {
+      if (contour.length < 2) return;
+      ctx.beginPath();
+      contour.forEach((pt, index) => {
+        if (index === 0) ctx.moveTo(pt.x, pt.y);
+        else ctx.lineTo(pt.x, pt.y);
+      });
+      ctx.globalAlpha = shapeStrokeOpacity(shape, alpha);
+      ctx.strokeStyle = shapeStrokeColor(shape, contourIndex);
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  function pointRadius(point, base = 4) {
+    const explicit = Number(point?.size || point?.r || 0);
+    if (Number.isFinite(explicit) && explicit > 0) return clamp(explicit, 0.5, 96);
+    const scale = Number(point?.scale || 1);
+    return clamp(base * (Number.isFinite(scale) ? scale : 1), 0.5, 96);
   }
 
   function drawImageLayer(ctx, image) {
@@ -4892,7 +5276,7 @@
     if (isType(data, "PointSet")) {
       return [
         svgShape(data.sourceShape, 0.12),
-        ...data.points.map((p, i) => `<circle cx="${round(p.x)}" cy="${round(p.y)}" r="2" fill="${i % 8 === 0 ? "#9b6048" : "#20231f"}" opacity="0.55"/>`)
+        ...data.points.map((p, i) => `<circle cx="${round(p.x)}" cy="${round(p.y)}" r="${round(pointRadius(p))}" fill="${p.color || (i % 8 === 0 ? "#9b6048" : "#20231f")}" opacity="${round(p.a ?? 0.55)}"/>`)
       ].join("");
     }
     if (isType(data, "Field")) return [svgShape(data.sourceShape, 0.08), svgField(data)].join("");
@@ -4924,7 +5308,7 @@
   }
 
   function svgShape(shape, opacity) {
-    if (!shape || shape.showBody === false) return "";
+    if (!shape || (shape.showBody === false && !shape.openContours?.length)) return "";
     if (shape.rasterMask) {
       return `<image href="${escapeAttr(shape.rasterMask.toDataURL("image/png"))}" x="0" y="0" width="${WIDTH}" height="${HEIGHT}" opacity="${round(shapeFillOpacity(shape, opacity))}" preserveAspectRatio="none"/>`;
     }
@@ -4938,6 +5322,9 @@
     if (shape.kind === "circle") {
       return `<circle cx="${CX}" cy="${CY}" r="${round(shape.radius)}" fill="${fillColor || "none"}" fill-opacity="${fillColor ? fillOpacity : 0}" stroke="${shapeStrokeColor(shape, 0)}" stroke-width="${strokeWidth}" stroke-opacity="${strokeOpacity}"/>`;
     }
+    if (shape.kind === "line" && shape.showBody === false && shape.openContours?.length) {
+      return svgOpenContours(shape, strokeWidth, strokeOpacity);
+    }
     if (shape.contours?.length) {
       const fillPath = fillColor
         ? `<path d="${shape.contours.map((contour) => closePath(contour).map((p, i) => `${i ? "L" : "M"}${round(p.x)} ${round(p.y)}`).join("")).join("")}" fill="${fillColor}" fill-opacity="${fillOpacity}" fill-rule="${shape.fillRule || "nonzero"}"/>`
@@ -4949,7 +5336,18 @@
       });
       return `<g>${fillPath}${paths.join("")}</g>`;
     }
+    if (shape.openContours?.length && !(shape.kind === "line" && shape.showBody !== false)) {
+      return svgOpenContours(shape, strokeWidth, strokeOpacity);
+    }
     return "";
+  }
+
+  function svgOpenContours(shape, strokeWidth, strokeOpacity) {
+    const paths = (shape.openContours || []).map((contour, index) => {
+      const d = contour.map((p, i) => `${i ? "L" : "M"}${round(p.x)} ${round(p.y)}`).join("");
+      return `<path d="${d}" fill="none" stroke="${shapeStrokeColor(shape, index)}" stroke-width="${strokeWidth}" stroke-opacity="${strokeOpacity}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    });
+    return `<g>${paths.join("")}</g>`;
   }
 
   function svgImage(image) {
@@ -5276,6 +5674,60 @@
       }
     });
     return points;
+  }
+
+  function sampleOpenPolyline(vertices, spacing) {
+    const points = [];
+    for (let index = 0; index < vertices.length - 1; index += 1) {
+      const start = vertices[index];
+      const end = vertices[index + 1];
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      const steps = Math.max(1, Math.round(length / spacing));
+      for (let step = 0; step < steps; step += 1) {
+        const t = step / steps;
+        points.push({ x: lerp(start.x, end.x, t), y: lerp(start.y, end.y, t) });
+      }
+    }
+    if (vertices.length) points.push(vertices[vertices.length - 1]);
+    return points;
+  }
+
+  function rotateAroundCenter(x, y, angle) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return {
+      x: CX + x * cos - y * sin,
+      y: CY + x * sin + y * cos
+    };
+  }
+
+  function strokedPolylineContour(points, thickness) {
+    if (!points?.length) return [];
+    const half = Math.max(0.5, thickness / 2);
+    const left = [];
+    const right = [];
+    points.forEach((pt, index) => {
+      const prev = points[Math.max(0, index - 1)] || pt;
+      const next = points[Math.min(points.length - 1, index + 1)] || pt;
+      const tangent = normalize(next.x - prev.x, next.y - prev.y);
+      const normal = { x: -tangent.y, y: tangent.x };
+      left.push(point(pt.x + normal.x * half, pt.y + normal.y * half, normal.x, normal.y, "boundary"));
+      right.unshift(point(pt.x - normal.x * half, pt.y - normal.y * half, -normal.x, -normal.y, "boundary"));
+    });
+    return left.concat(right);
+  }
+
+  function fillPointsForContour(contour, spacing = 8) {
+    const bounds = boundsFromPoints(contour);
+    const fill = [];
+    for (let y = bounds.minY; y <= bounds.maxY; y += spacing) {
+      for (let x = bounds.minX; x <= bounds.maxX; x += spacing) {
+        if (!pointInPolygon({ x, y }, contour)) continue;
+        const normal = normalize(x - CX, y - CY);
+        fill.push(point(x, y, normal.x, normal.y, "interior"));
+      }
+    }
+    return fill;
   }
 
   function roundedRectangleContour(x, y, width, height, radius) {
@@ -5942,7 +6394,13 @@
     }
 
     if (isType(data, "PointSet")) {
-      parts.marks.push(...(data.points || []).map((pt) => ({ x: pt.x, y: pt.y, r: 1.8, a: 0.48 * opacity })));
+      parts.marks.push(...(data.points || []).map((pt) => ({
+        x: pt.x,
+        y: pt.y,
+        r: pointRadius(pt, 3),
+        a: (pt.a ?? 0.48) * opacity,
+        color: pt.color
+      })));
       return parts;
     }
 
@@ -6184,6 +6642,7 @@
     if (isType(data, "Shape")) {
       const traces = shapeToTraceSet(data, { mode: "Boundary", density: 62 }, 0);
       if (traces) paths.push(...(traces.paths || []).map(clonePath));
+      paths.push(...(data.openContours || []).map(clonePath));
       return;
     }
     if (isType(data, "Field")) {
@@ -6226,7 +6685,7 @@
 
   function shapeDensity(shape, pt) {
     const inside = (shape.contours || []).some((contour) => pointInPolygon(pt, contour));
-    const edge = pathsDensity(shape.contours || [], pt, 7);
+    const edge = Math.max(pathsDensity(shape.contours || [], pt, 7), pathsDensity(shape.openContours || [], pt, 7));
     const fill = pointCloudDensity(shape.fill || [], pt, 8);
     const boundary = pointCloudDensity(shape.boundary || [], pt, 7);
     return Math.max(inside ? 0.68 : 0, edge, fill, boundary);
@@ -6401,6 +6860,7 @@
     const fill = (shape.fill || []).map(mapper);
     const boundary = (shape.boundary || []).map(mapper);
     const contours = (shape.contours || []).map((contour) => contour.map(mapper));
+    const openContours = (shape.openContours || []).map((contour) => contour.map(mapper));
     const guides = (shape.guides || []).map((guide) => guide.map(mapper));
     const output = {
       ...shape,
@@ -6408,8 +6868,9 @@
       fill,
       boundary,
       contours,
+      openContours,
       guides,
-      bounds: boundsFromPoints(fill.concat(boundary))
+      bounds: boundsFromPoints(fill.concat(boundary).concat(openContours.flat()))
     };
     if (shape.layout) {
       const layoutPoint = mapper({ x: shape.layout.x, y: shape.layout.y, nx: 0, ny: -1 });
@@ -6650,13 +7111,20 @@
   function scaleShapeAround(shape, center, factor) {
     const fill = (shape.fill || []).map((pt) => scalePointAround(pt, center, factor));
     const boundary = (shape.boundary || []).map((pt) => scalePointAround(pt, center, factor));
+    const openContours = (shape.openContours || []).map((contour) => contour.map((pt) => scalePointAround(pt, center, factor)));
     const output = {
       ...shape,
       fill,
       boundary,
       contours: (shape.contours || []).map((contour) => contour.map((pt) => scalePointAround(pt, center, factor))),
+      openContours,
       guides: (shape.guides || []).map((guide) => guide.map((pt) => scalePointAround(pt, center, factor))),
-      bounds: boundsFromPoints(fill.concat(boundary))
+      bounds: boundsFromPoints(fill.concat(boundary).concat(openContours.flat())),
+      shapeStyle: shape.shapeStyle ? {
+        ...shape.shapeStyle,
+        strokeWidth: shape.shapeStyle.strokeWidth ? shape.shapeStyle.strokeWidth * factor : shape.shapeStyle.strokeWidth
+      } : shape.shapeStyle,
+      thickness: shape.thickness ? shape.thickness * factor : shape.thickness
     };
     if (shape.layout) {
       const layoutPoint = scalePointAround({ x: shape.layout.x, y: shape.layout.y }, center, factor);
@@ -6694,12 +7162,18 @@
   function transformShapeData(shape, dx, dy, factor) {
     const output = {
       ...shape,
-      kind: shape.kind === "text" ? "text" : "repeat",
+      kind: shape.kind,
       fill: (shape.fill || []).map((pt) => transformPointData(pt, dx, dy, factor)),
       boundary: (shape.boundary || []).map((pt) => transformPointData(pt, dx, dy, factor)),
       contours: (shape.contours || []).map((contour) => transformPathData(contour, dx, dy, factor)),
+      openContours: (shape.openContours || []).map((contour) => transformPathData(contour, dx, dy, factor)),
       guides: (shape.guides || []).map((guide) => transformPathData(guide, dx, dy, factor)),
-      bounds: transformedBounds(shape.bounds || boundsFromPoints((shape.fill || []).concat(shape.boundary || [])), dx, dy, factor)
+      bounds: transformedBounds(shape.bounds || boundsFromPoints((shape.fill || []).concat(shape.boundary || []).concat((shape.openContours || []).flat())), dx, dy, factor),
+      shapeStyle: shape.shapeStyle ? {
+        ...shape.shapeStyle,
+        strokeWidth: shape.shapeStyle.strokeWidth ? shape.shapeStyle.strokeWidth * factor : shape.shapeStyle.strokeWidth
+      } : shape.shapeStyle,
+      thickness: shape.thickness ? shape.thickness * factor : shape.thickness
     };
     if (shape.kind === "text" && shape.layout) {
       const layoutPoint = transformPointData({ x: shape.layout.x, y: shape.layout.y }, dx, dy, factor);
@@ -7151,6 +7625,7 @@
     createCircleShape,
     createRectangleShape,
     createPolygonShape,
+    createLineShape,
     createSvgShape,
     createRandomPoints,
     createImageLayer,
@@ -7206,6 +7681,7 @@
     fillArea,
     strokeStyle,
     inkDistress,
+    colorize,
     randomStrokeColor,
     randomSize,
     pointLabels,

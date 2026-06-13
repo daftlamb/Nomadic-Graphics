@@ -231,12 +231,13 @@ h2 {
 .icon-button,
 .export-actions button,
 .export-actions select {
-  min-width: 38px;
-  height: 34px;
+  min-width: 32px;
+  height: 28px;
   border: 1px solid var(--line);
   border-radius: 4px;
   color: var(--ink);
   background: var(--field);
+  font-size: 11px;
 }
 
 .panel-toggle-button {
@@ -281,41 +282,182 @@ h2 {
 
 .export-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 5px;
   min-width: 0;
-  max-width: min(760px, 72vw);
-  overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: thin;
+  max-width: min(700px, 68vw);
+  overflow: visible;
 }
 
 .export-actions button {
   flex: 0 0 auto;
-  padding: 0 10px;
+  padding: 0 7px;
 }
 
 .export-actions .toolbar-link {
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
-  min-width: 38px;
-  height: 34px;
-  padding: 0 10px;
+  min-width: 32px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--field);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(32, 35, 31, 0.34);
+}
+
+.modal-backdrop[hidden] {
+  display: none;
+}
+
+.modal-card {
+  width: min(760px, calc(100vw - 56px));
+  max-height: calc(100vh - 56px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 18px 50px rgba(32, 35, 31, 0.24);
+}
+
+.modal-header,
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-actions {
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+}
+
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-header-actions select {
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--field);
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.modal-actions button {
+  min-height: 30px;
   border: 1px solid var(--line);
   border-radius: 4px;
   color: var(--ink);
   background: var(--field);
   font-family: var(--font-mono);
   font-size: 12px;
-  text-decoration: none;
+}
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+
+.guide-grid article {
+  min-height: 132px;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.guide-grid h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.guide-grid p,
+.settings-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.settings-form {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-form span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.settings-form input,
+.settings-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--field);
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.settings-form input {
+  height: 34px;
+}
+
+.settings-form textarea {
+  min-height: 112px;
+  resize: vertical;
+  padding-top: 9px;
+}
+
+.license-status {
+  min-height: 18px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .export-actions select {
-  flex: 0 0 92px;
-  padding: 0 8px;
+  flex: 0 0 78px;
+  padding: 0 6px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .preset-strip,
@@ -428,6 +570,18 @@ h2 {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+#graphCanvas.space-pan {
+  cursor: grab !important;
+}
+
+#graphCanvas.space-pan:active {
+  cursor: grabbing !important;
+}
+
+#graphCanvas.marquee-selecting {
+  cursor: crosshair !important;
 }
 
 .parameter-group {

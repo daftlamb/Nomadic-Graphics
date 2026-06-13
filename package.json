@@ -1,0 +1,49 @@
+{
+  "name": "nomadic-graphics",
+  "version": "0.1.0",
+  "description": "Node-based visual playground for AI images, local segmentation, generative geometry, audio-reactive graphics, and print-inspired processing.",
+  "type": "module",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "proxy": "node openai-image-proxy.mjs",
+    "license:admin": "electron license/admin-main.cjs",
+    "pack": "electron-builder --dir",
+    "dist:win": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "studio.nomadic.graphics",
+    "productName": "Nomadic Graphics",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "app.js",
+      "geometry-engine.js",
+      "help.html",
+      "index.html",
+      "openai-image-proxy.mjs",
+      "styles.css",
+      "vendor/**/*",
+      "build/**/*",
+      "electron/**/*",
+      "license/public-key.pem",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  }
+}

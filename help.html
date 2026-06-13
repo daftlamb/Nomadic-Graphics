@@ -247,6 +247,45 @@
         font-family: "Noto Sans SC", sans-serif;
       }
 
+      .info-panel {
+        display: grid;
+        gap: 12px;
+        margin-top: 16px;
+      }
+
+      .info-card {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+      }
+
+      .info-card p,
+      .info-card li {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .info-card ul {
+        margin: 10px 0 0;
+        padding-left: 20px;
+      }
+
+      .info-card a {
+        color: var(--blue);
+      }
+
+      pre {
+        overflow: auto;
+        margin: 12px 0 0;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #f1eee4;
+        color: var(--ink);
+        font-size: 12px;
+      }
+
       footer {
         margin-top: 44px;
         padding-top: 18px;
@@ -356,6 +395,93 @@
             <h3>Vector texture / 矢量纹理</h3>
             <p>Text Shape -> Distance Field -> Contour -> Ink Distress -> Preview or SVG export.</p>
             <p>文字形状转场，再提取等高线，接 Ink Distress 后可导出 SVG。</p>
+          </article>
+        </div>
+      </section>
+
+      <section aria-labelledby="ai-setup-title">
+        <h2 id="ai-setup-title">GPT Image / OpenAI-compatible API</h2>
+        <div class="info-panel">
+          <article class="info-card">
+            <h3>What you need / 需要准备</h3>
+            <p>
+              GPT Image, GPT Image Edit, Vision Judge, and Semantic Mask require an API key. Open Settings from the top toolbar, then fill API Key.
+              If you use the official OpenAI API, leave Base URL blank; the app falls back to https://api.openai.com.
+            </p>
+            <p class="zh-copy">
+              GPT Image、生图编辑、视觉判断和语义遮罩节点需要 API Key。点击顶部 Settings 填入 API Key 即可。
+              如果使用 OpenAI 官方 API，Base URL 可以留空；软件会默认使用 https://api.openai.com。
+            </p>
+          </article>
+          <article class="info-card">
+            <h3>Third-party compatible providers / 第三方兼容服务</h3>
+            <p>
+              If your provider says it is OpenAI-compatible, paste its Base URL into Settings or into a single node's API URL field.
+              Per-node API URL overrides the global Settings value.
+            </p>
+            <p class="zh-copy">
+              如果你购买的是 OpenAI-compatible 中转服务，把服务商提供的 Base URL 填到 Settings，或者填到某个节点自己的 API URL。
+              节点里的 API URL 优先级高于全局设置。
+            </p>
+          </article>
+          <article class="info-card">
+            <h3>Privacy / 隐私</h3>
+            <p>
+              API keys are stored only on this device and are not written into exported patch files. Generated images can be cached locally to avoid repeated cost while testing.
+            </p>
+            <p class="zh-copy">
+              API Key 只保存在本机，不会写入导出的 patch 文件。生成图片可以本地缓存，方便测试时避免重复计费。
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section aria-labelledby="magenta-setup-title">
+        <h2 id="magenta-setup-title">Magenta RT Music Setup / Magenta 音频模型</h2>
+        <div class="info-panel">
+          <article class="info-card">
+            <h3>Why it is optional / 为什么不内置</h3>
+            <p>
+              Magenta RT models are large, so they are not included in the Nomadic Graphics installer. Mobile SAM is bundled, but Magenta should be downloaded only by users who need audio generation.
+            </p>
+            <p class="zh-copy">
+              Magenta RT 模型体积较大，所以不会放进 Nomadic Graphics 安装包。Mobile SAM 已内置；Magenta 只建议需要音频生成的用户自行下载。
+            </p>
+          </article>
+          <article class="info-card">
+            <h3>Official links / 官方链接</h3>
+            <ul>
+              <li>GitHub: <a href="https://github.com/magenta/magenta-realtime" target="_blank" rel="noreferrer">https://github.com/magenta/magenta-realtime</a></li>
+              <li>Docs: <a href="https://magenta.github.io/magenta-realtime/" target="_blank" rel="noreferrer">https://magenta.github.io/magenta-realtime/</a></li>
+              <li>Hugging Face models: linked from the GitHub README under “open-weights model”.</li>
+            </ul>
+          </article>
+          <article class="info-card">
+            <h3>Apple Silicon quickstart / Mac 快速安装</h3>
+            <p>The official quickstart currently recommends Python 3.12, uv, the MLX backend, then model downloads through the mrt CLI.</p>
+            <pre><code>uv venv --python 3.12
+source .venv/bin/activate
+uv pip install "magenta-rt[mlx]"
+mrt models init
+mrt models download
+mrt mlx generate --prompt "ambient pads" --duration 4.0 --model=mrt2_small</code></pre>
+            <p class="zh-copy">在 Mac 上建议优先用 MLX 后端。`mrt2_small` 更轻，`mrt2_base` 质量更高但更吃机器。</p>
+          </article>
+          <article class="info-card">
+            <h3>Windows notes / Windows 注意事项</h3>
+            <p>
+              On Windows, use the JAX backend in Nomadic Graphics. `mrt2_base` can be very slow on PC/JAX, so start with `mrt2_small` and short durations.
+              After installing Magenta RT, open Settings and fill:
+            </p>
+            <ul>
+              <li>Magenta RT CLI, for example E:\AIEnvs\magenta-rt\Scripts\mrt.exe</li>
+              <li>Magenta Model/Home Folder, for example E:\AIModels\Magenta</li>
+              <li>Magenta Output Folder, for example E:\AIModels\Magenta\magenta-rt-v2\outputs</li>
+            </ul>
+            <p class="zh-copy">
+              Windows 上建议在节点里选择 JAX。PC 跑 `mrt2_base` 可能非常慢，建议先用 `mrt2_small` 和较短时长测试。
+              安装好 Magenta RT 后，在 Settings 里填写 CLI、模型/Home 文件夹和输出文件夹。
+            </p>
           </article>
         </div>
       </section>
@@ -477,6 +603,7 @@
             ["Fill Area", "Fills a shape, field, closed trace set, or layer set.", "填充形状、灰度场、闭合路径或图层。", "In: shape/field/traces/layers; Color: color optional", "artifact, layers", ["Mode", "Density", "Threshold"]],
             ["Stroke Style", "Changes trace width, opacity, and ink color.", "修改路径线宽、不透明度和颜色。", "TraceSet: traces; Color: color optional; Width: value optional", "traces", ["Width", "Opacity"]],
             ["Ink Distress", "Degrades geometry into rough low-quality print ink.", "把几何图形处理成粗糙低保真印刷墨迹。", "shape, field, traces, artifact, layers", "artifact, layers", ["Mode", "Threshold", "Block Size", "Distress", "Grain", "Bleed", "Pressure", "Seed"]],
+            ["Colorize", "Maps black/white or grayscale raster data into duotone, tint, or palette color.", "把黑白或灰度图像轻量映射成双色、染色或色板颜色。", "image, tiles, layers", "image, tiles, layers", ["Mode", "Ink", "Paper", "Palette", "Amount", "Contrast", "Seed"]],
             ["Random Color", "Assigns vivid palette colors to raster, tile, cell, stroke, and fill data.", "给图像、切片、线稿、填充或图层随机分配色彩。", "image, tiles, cells, shape, traces, artifact, layers", "same as input", ["Target", "Palette", "Variation", "Seed", "Opacity"]],
             ["Random Size", "Assigns varied scale to points, layers, and visual data.", "给点、图层或视觉数据分配随机尺寸。", "shape, points, traces, artifact, layers", "same as input", ["Min", "Max", "Seed"]],
             ["Point Labels", "Places number strings at point locations.", "在点的位置放置数字或数组文本。", "Points: points; Array: array optional; Color: color optional", "artifact", ["Size", "Offset", "Limit", "Opacity"]],
